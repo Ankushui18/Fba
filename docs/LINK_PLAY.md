@@ -1,16 +1,16 @@
 # FBA Arcade Link beta
 
-Use the same Link beta APK on **both** phones. For **FBA Arcade Recovery**,
-use `fba-arcade-0.5.0-recovery-link-arm64-v8a-test.apk`; it can update
-0.4.0 Recovery with the same signer or replace same-version Recovery Offline.
-It doesn't replace an older non-Recovery FBA Arcade install. A 0.5.0 peer will
-not link to 0.4.0. The Offline APK contains no Bluetooth or network transport.
+Use `fba-arcade-0.5.1-recovery-link-arm64-v8a-test.apk` on both phones for
+the image-filter fix. It can update signed 0.4.0 or 0.5.0 Recovery and can
+replace Recovery Offline. It doesn't replace an older non-Recovery FBA Arcade
+install. The wire and compatibility ID are unchanged from 0.5.0; 0.4.0 peers
+are still rejected. The Offline APK contains no Bluetooth or network transport.
 
 ## Start a two-player game
 
 1. Import byte-for-byte identical game and any required parent/BIOS ZIPs on
    both phones. Use a set with two digital players and the same Android ABI
-   and APK version. This isn't a connection to the old FBA4droid APK.
+   and a compatible Link build. This isn't a connection to the old FBA4droid APK.
 2. For Wi-Fi, put both phones on the same private IPv4 Wi-Fi or hotspot.
    Networks that isolate clients may not work. For Bluetooth, pair the two
    phones in Android settings before opening the game. Link doesn't scan for

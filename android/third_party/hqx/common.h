@@ -37,13 +37,21 @@
 #define trU   0x00000700
 #define trV   0x00000006
 
-/* FBA Arcade: bounded, per-thread RGB to YUV lookup; see init.c. */
-uint32_t hqx_cached_yuv(uint32_t c);
+/* Fetch the thread's cache once per image, not per pixel. On older Android
+ * versions TLS is emulated and accessing it can call into pthreads. */
+typedef struct { uint32_t key, yuv; } HqxColor;
+HqxColor *hqx_color_cache(void);
+uint32_t hqx_convert_yuv(uint32_t rgb);
 
-static inline uint32_t rgb_to_yuv(uint32_t c)
+static inline uint32_t rgb_to_yuv(HqxColor *cache, uint32_t c)
 {
-    // Mask against MASK_RGB to discard the alpha channel
-    return hqx_cached_yuv(MASK_RGB & c);
+    c &= MASK_RGB;
+    HqxColor *entry = &cache[(c * UINT32_C(0x9e3779b1)) >> 18];
+    if (entry->key != c + 1) {
+        entry->yuv = hqx_convert_yuv(c);
+        entry->key = c + 1;
+    }
+    return entry->yuv;
 }
 
 /* Test if there is difference in color */
@@ -53,10 +61,8 @@ static inline int yuv_diff(uint32_t yuv1, uint32_t yuv2) {
             ( abs((int)(yuv1 & Vmask) - (int)(yuv2 & Vmask)) > trV ) );
 }
 
-static inline int Diff(uint32_t c1, uint32_t c2)
-{
-    return yuv_diff(rgb_to_yuv(c1), rgb_to_yuv(c2));
-}
+/* Used by the unchanged HQx rule tables, with their local cache pointer. */
+#define Diff(c1, c2) yuv_diff(rgb_to_yuv(cache, (c1)), rgb_to_yuv(cache, (c2)))
 
 /* Interpolate functions */
 static inline uint32_t Interpolate_2(uint32_t c1, int w1, uint32_t c2, int w2, int s)

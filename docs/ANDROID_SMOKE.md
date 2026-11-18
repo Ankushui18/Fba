@@ -1,13 +1,13 @@
-# FBA Arcade 0.5.0 Recovery — Android acceptance checks
+# FBA Arcade 0.5.1 Recovery — Android acceptance checks
 
 Both signed ARM64 APKs passed build and host verification. No Android device
 was connected. These checks verify Android UI/SAF, input, audio, and hardware
 connectivity on a phone or tablet. Use a legally obtained ROM set for the
 pinned FBNeo revision, including its BIOS/parent dependencies.
 
-1. **Install/update.** Use Offline first. For the signed parity test APKs, install
-   0.5.0 **over** 0.4.0 Recovery; compare the ID and cert before testing a
-   different build. Check that the library, an existing control layout, save
+1. **Install/update.** Use Offline first. For the signed timing-fix APKs, install
+   0.5.1 **over** 0.5.0 or 0.4.0 Recovery; compare the ID and cert before testing
+   a different build. Check that the library, an existing control layout, save
    slots, IPS variants and cheats survive. Don't uninstall the old app. Offline
    should request no permissions; the Android file picker is not a permission
    prompt for all storage. Original FBA Arcade/FBA4droid installs stay separate.
@@ -35,13 +35,19 @@ pinned FBNeo revision, including its BIOS/parent dependencies.
    combination and a Combo 1–4 mask, bind EXT1–4 in Physical keys, and test touch
    and hardware. Quick taps should register; holding a selected repeat button
    should start autofire. Try input mirroring and separate controller ports.
-5. **Display.** Compare fit, fill, original 1×, ratios and integer scale with a
-   horizontal and vertical game. 1× stays at the raw pixel size when it fits.
-   Compare sharp and HQ2x/3x/4x at a larger size. HQx is pixel smoothing, not a
-   core resolution increase; oversized frames fall back to sharp. Change
-   orientation, audio, FPS and frameskip. Enable GPU canvas, exit and re-open.
-   Check pause/resume and split-screen. Restore per-game defaults without
-   losing ROMs, notes or states.
+5. **Display and filter timing.** In Fit mode with sound and the FPS counter on
+   and frameskip off, play the same scene with Sharp, Bilinear, HQ2x, HQ3x and
+   HQ4x. Note both **game / video** FPS, smooth scrolling, audio crackle and
+   input response. On a phone that can't draw every HQx frame, video FPS can
+   drop while game FPS and sound stay steady. Compare with 0.5.0 if possible
+   (test the older install first; don't downgrade by uninstalling). Try manual
+   and Auto frameskip: they affect video, not emulation speed. Repeat with GPU
+   canvas enabled after exiting and reopening the game. Switch filters while
+   paused, rotate/split the screen, background/resume, and exit one game then
+   immediately open another. Check fit, fill, integer scale and both fixed
+   ratios in horizontal and vertical games. **Original size (1×)** bypasses
+   filters. Screenshots/slot previews should still be unfiltered. Restore
+   per-game defaults without losing ROMs, notes or states.
 6. **Cheats/DIPs and slots.** Apply a bundled cheat and cabinet choice and check
    their effect. Save to slot 1, advance, load and restart. Use the row's
    **Save states** to rename, launch from and delete slots. Capture a screenshot,
@@ -56,12 +62,14 @@ pinned FBNeo revision, including its BIOS/parent dependencies.
    preview/slots. The base ZIP, regular battery storage and states should be
    unchanged. Missing IPS files, out-of-bounds writes and wrong chip CRCs should
    fail without changing existing variants.
-8. **Link beta only, two phones.** Update both to the same 0.5.0 Link APK. See
+8. **Link beta only, two phones.** Update both to the 0.5.1 Link APK. See
    [setup](LINK_PLAY.md). Test Wi-Fi P1/P2 and paired Bluetooth P1/P2. Check
-   separate inputs, paired pause/resume and safe exit. Try a mixed 0.4.0/0.5.0
-   pair, wrong room code, different ZIP revision, permission denial, cancellation
-   and a network loss or app background. Check normal solo data is unchanged.
+   separate inputs, paired pause/resume and safe exit. Try different filters
+   on the two phones. Check a mixed 0.5.0/0.5.1 pair (same protocol), a rejected
+   0.4.0 peer, wrong room code, different ZIP revision, permission denial,
+   cancellation and network loss or app background. Check solo data is unchanged.
 9. **If possible:** repeat on a 16 KiB page-size phone.
 
 Report phone model/Android version, APK flavor, ROM set name (not ROM contents),
-and the exact step that failed. There is no automatic error reporting.
+active filter, both FPS values, and whether audio stutters along with video.
+There is no automatic error reporting.

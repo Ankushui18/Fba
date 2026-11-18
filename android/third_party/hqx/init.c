@@ -16,25 +16,22 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  */
 
-#include <stdint.h>
+#include "common.h"
 #include "hqx.h"
 
 /* FBA Arcade (2026): preserve the mapping, but replace the 64 MiB eager table
  * with a 128 KiB per-thread cache. Convert lazily on an exact 24-bit miss. */
-static _Thread_local struct { uint32_t key, yuv; } cache[16384];
+static _Thread_local HqxColor colors[16384];
 
-uint32_t hqx_cached_yuv(uint32_t c)
+HqxColor *hqx_color_cache(void) { return colors; }
+
+uint32_t hqx_convert_yuv(uint32_t c)
 {
-    unsigned slot = (c * UINT32_C(0x9e3779b1)) >> 18;
-    if (cache[slot].key != c + 1) {
-        int r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
-        unsigned y = (unsigned)(0.299*r + 0.587*g + 0.114*b);
-        unsigned u = (unsigned)((int)(-0.169*r - 0.331*g + 0.5*b) + 128);
-        unsigned v = (unsigned)((int)(0.5*r - 0.419*g - 0.081*b) + 128);
-        cache[slot].key = c + 1;
-        cache[slot].yuv = (y << 16) + (u << 8) + v;
-    }
-    return cache[slot].yuv;
+    int r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
+    unsigned y = (unsigned)(0.299*r + 0.587*g + 0.114*b);
+    unsigned u = (unsigned)((int)(-0.169*r - 0.331*g + 0.5*b) + 128);
+    unsigned v = (unsigned)((int)(0.5*r - 0.419*g - 0.081*b) + 128);
+    return (y << 16) + (u << 8) + v;
 }
 
 HQX_API void HQX_CALLCONV hqxInit(void) {}

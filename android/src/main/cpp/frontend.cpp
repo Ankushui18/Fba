@@ -17,6 +17,27 @@ public:
     UtfChars(const UtfChars &) = delete;
     UtfChars &operator=(const UtfChars &) = delete;
 };
+
+bool rgbaInfo(JNIEnv *env, jobject bitmap, AndroidBitmapInfo &info) {
+    return bitmap && AndroidBitmap_getInfo(env, bitmap, &info) == ANDROID_BITMAP_RESULT_SUCCESS
+        && info.format == ANDROID_BITMAP_FORMAT_RGBA_8888 && info.width && info.height
+        && info.stride >= size_t(info.width) * sizeof(uint32_t);
+}
+
+class BitmapPixels {
+    JNIEnv *env;
+    jobject bitmap;
+    bool locked;
+public:
+    void *data = nullptr;
+    BitmapPixels(JNIEnv *env, jobject bitmap) : env(env), bitmap(bitmap) {
+        locked = AndroidBitmap_lockPixels(env, bitmap, &data) == ANDROID_BITMAP_RESULT_SUCCESS;
+    }
+    ~BitmapPixels() { if (locked) AndroidBitmap_unlockPixels(env, bitmap); }
+    explicit operator bool() const { return locked && data; }
+    BitmapPixels(const BitmapPixels &) = delete;
+    BitmapPixels &operator=(const BitmapPixels &) = delete;
+};
 }  // namespace
 
 #define ENTRY(fn) Java_io_github_ankushui18_fbaoffline_Core_##fn
@@ -32,7 +53,7 @@ extern "C" JNIEXPORT jstring JNICALL ENTRY(open)(JNIEnv *env, jclass, jstring ro
     return error ? env->NewStringUTF(error) : nullptr;
 }
 
-extern "C" JNIEXPORT void JNICALL ENTRY(close)(JNIEnv *, jclass) { arcade::close(); arcade::clearFilter(); }
+extern "C" JNIEXPORT void JNICALL ENTRY(close)(JNIEnv *, jclass) { arcade::close(); }
 
 extern "C" JNIEXPORT jint JNICALL ENTRY(step)(JNIEnv *env, jclass, jlong input, jshortArray output) {
     if (!arcade::step(static_cast<uint64_t>(input))) return -1;
@@ -53,28 +74,34 @@ extern "C" JNIEXPORT jfloat JNICALL ENTRY(aspect)(JNIEnv *, jclass) { return arc
 extern "C" JNIEXPORT jdouble JNICALL ENTRY(fps)(JNIEnv *, jclass) { return arcade::fps(); }
 extern "C" JNIEXPORT jint JNICALL ENTRY(sampleRate)(JNIEnv *, jclass) { return arcade::sampleRate(); }
 
-extern "C" JNIEXPORT jboolean JNICALL ENTRY(copyFrame)(JNIEnv *env, jclass, jobject bitmap, jint scale) {
+extern "C" JNIEXPORT jboolean JNICALL ENTRY(copyFrame)(JNIEnv *env, jclass, jobject bitmap) {
     const auto video = arcade::video();
-    if (scale != 1 && !arcade::hqxFits(video.width, video.height, scale)) return JNI_FALSE;
-    const unsigned width = video.width * scale, height = video.height * scale;
     AndroidBitmapInfo info = {};
-    if (!bitmap || AndroidBitmap_getInfo(env, bitmap, &info) != ANDROID_BITMAP_RESULT_SUCCESS ||
-        info.format != ANDROID_BITMAP_FORMAT_RGBA_8888 || info.width != width || info.height != height ||
-        !width || !height || info.stride < width * sizeof(uint32_t)) return JNI_FALSE;
-    void *pixels = nullptr;
-    if (AndroidBitmap_lockPixels(env, bitmap, &pixels) != ANDROID_BITMAP_RESULT_SUCCESS) return JNI_FALSE;
-    bool okay = true;
-    if (scale == 1) {
-        auto *row = static_cast<uint8_t *>(pixels);
-        for (unsigned y = 0; y < height; y++, row += info.stride)
-            memcpy(row, video.rgba + width * y, width * sizeof(uint32_t));
-    } else {
-        try {
-            okay = arcade::scaleHqx(video.rgba, video.width, video.height, scale, static_cast<uint32_t *>(pixels), info.stride);
-        } catch (const std::bad_alloc &) { okay = false; }
+    if (!rgbaInfo(env, bitmap, info) || info.width != video.width || info.height != video.height) return JNI_FALSE;
+    BitmapPixels pixels(env, bitmap);
+    if (!pixels) return JNI_FALSE;
+    const size_t rowBytes = video.width * sizeof(uint32_t);
+    if (rowBytes == info.stride) memcpy(pixels.data, video.rgba, rowBytes * video.height);
+    else {
+        auto *dst = static_cast<uint8_t *>(pixels.data);
+        for (unsigned y = 0; y < video.height; ++y)
+            memcpy(dst + size_t(y) * info.stride, video.rgba + size_t(y) * video.width, rowBytes);
     }
-    AndroidBitmap_unlockPixels(env, bitmap);
-    return okay;
+    return JNI_TRUE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL ENTRY(scaleFrame)(JNIEnv *env, jclass, jobject src, jobject dst, jint factor) {
+    AndroidBitmapInfo input = {}, output = {};
+    if (!rgbaInfo(env, src, input) || !arcade::hqxFits(input.width, input.height, factor)
+        || !rgbaInfo(env, dst, output) || output.width != input.width * factor || output.height != input.height * factor) return JNI_FALSE;
+    BitmapPixels from(env, src);
+    if (!from) return JNI_FALSE;
+    BitmapPixels into(env, dst);
+    if (!into) return JNI_FALSE;
+    try {
+        return arcade::scaleHqx(static_cast<const uint32_t *>(from.data), input.width, input.height, input.stride,
+                               factor, static_cast<uint32_t *>(into.data), output.stride);
+    } catch (const std::bad_alloc &) { return JNI_FALSE; }
 }
 
 extern "C" JNIEXPORT jboolean JNICALL ENTRY(reset)(JNIEnv *, jclass) { return arcade::reset(); }

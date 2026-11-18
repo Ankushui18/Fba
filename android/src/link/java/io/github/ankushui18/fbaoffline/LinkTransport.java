@@ -213,6 +213,7 @@ final class LinkTransport implements GameLink {
 
     private byte[] identity(GameCatalog catalog, File rom) throws IOException {
         MessageDigest hash = LocalFiles.sha256();
+        // Compatibility revision, not the APK version. 0.5.1 only changes local presentation.
         hash.update(("FBA Arcade Link 0.5.0 / deterministic FBNeo 2da48555 / " + System.getProperty("os.arch") + "\n").getBytes(StandardCharsets.US_ASCII));
         ArrayDeque<File> next = new ArrayDeque<>();
         Set<String> seen = new HashSet<>();

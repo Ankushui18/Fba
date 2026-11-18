@@ -175,7 +175,9 @@ final class GameScreen extends FrameLayout {
             @Override public void run() {
                 if (fps.getVisibility() != VISIBLE) return;
                 int n = session == null ? 0 : session.measuredFps;
-                fps.setText(n > 0 ? n + " FPS" : "— FPS");
+                int video = session == null ? 0 : session.drawnFps;
+                fps.setText(n > 0 ? n + " / " + video + " FPS" : "— FPS");
+                fps.setContentDescription(n > 0 ? "Game " + n + " FPS, video " + video + " FPS" : "FPS unavailable");
                 postDelayed(this, 650);
             }
         };
@@ -270,7 +272,7 @@ final class GameScreen extends FrameLayout {
             TouchDeck.measureExactly(pause, menuBox.w, menuBox.h);
             PadLayout.Box playerBox = layout.controls[PadLayout.PLAYER];
             TouchDeck.measureExactly(player, playerBox.w, playerBox.h);
-            TouchDeck.measureExactly(fps, Math.min(w, ui.dp(66)), Math.min(h, ui.dp(23)));
+            TouchDeck.measureExactly(fps, Math.min(w, ui.dp(100)), Math.min(h, ui.dp(23)));
         }
 
         @Override protected void onLayout(boolean changed, int l, int t, int r, int b) {

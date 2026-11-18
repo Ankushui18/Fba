@@ -173,6 +173,7 @@ HQX_API void HQX_CALLCONV hq4x_32_rb( const uint32_t * sp, uint32_t srb, uint32_
     uint8_t *sRowP = (uint8_t *) sp;
     uint8_t *dRowP = (uint8_t *) dp;
     uint32_t yuv1, yuv2;
+    HqxColor *const cache = hqx_color_cache();
 
     //   +----+----+----+
     //   |    |    |    |
@@ -225,7 +226,7 @@ HQX_API void HQX_CALLCONV hq4x_32_rb( const uint32_t * sp, uint32_t srb, uint32_
             int pattern = 0;
             int flag = 1;
 
-            yuv1 = rgb_to_yuv(w[5]);
+            yuv1 = rgb_to_yuv(cache, w[5]);
 
             for (k=1; k<=9; k++)
             {
@@ -233,7 +234,7 @@ HQX_API void HQX_CALLCONV hq4x_32_rb( const uint32_t * sp, uint32_t srb, uint32_
 
                 if ( w[k] != w[5] )
                 {
-                    yuv2 = rgb_to_yuv(w[k]);
+                    yuv2 = rgb_to_yuv(cache, w[k]);
                     if (yuv_diff(yuv1, yuv2))
                         pattern |= flag;
                 }

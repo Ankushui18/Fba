@@ -131,9 +131,9 @@ files. The frontend has no arbitrary host-side code execution or install path.
   The linker is explicitly configured for 16 KiB. Use official tools and a
   current NDK before public distribution.
 - `tools/test.sh` checks imports, custom/auto/compact layouts, multitouch,
-  private state validation, IPS, INI validation, HQx, the local link protocol
-  and payload indexes. `tools/smoke-core.sh` runs a synthetic board program
-  on the unchanged pinned Linux core: video, PCM, both player inputs, DIP,
+  private state validation, IPS, INI validation, HQx pixel parity and frame handoff,
+  the local link protocol and payload indexes. `tools/smoke-core.sh` runs a
+  synthetic board program on the unchanged pinned Linux core: video, PCM, both player inputs, DIP,
   imported cheat writes, state restore/reset, and actual changed video from an
   multi-chip IPS variant followed by an unchanged regular launch. `tools/smoke-link.sh`
   drives two Link cores via the same wire protocol and verifies synchronized
@@ -164,6 +164,7 @@ Recovery builds use `io.github.ankushui18.fbaarcade.recovery` and a new test
 certificate. They are separate installs from the originals and do not
 migrate or read the older app's private library or saves. The two Recovery
 flavors share their own ID and signer, so they replace each other. The signed
-0.5.0 Recovery test APKs use the same signer (SHA-256
+0.5.0 and 0.5.1 Recovery test APKs use the same signer (SHA-256
 `9a536eff83d3a9892a458927edcbb4e7209ccab339094f726c676d2ec197e1a3`) and a higher
-versionCode, so they can update 0.4.0 Recovery without uninstalling.
+versionCode (5 and 6), so 0.5.1 can update 0.5.0 or 0.4.0 Recovery without
+uninstalling.

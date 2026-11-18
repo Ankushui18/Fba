@@ -22,5 +22,9 @@ final class Core {
     static native float aspect();
     static native double fps();
     static native int sampleRate();
-    static native boolean copyFrame(Bitmap bitmap, int scale);
+    // Copy the live core framebuffer. Emulation thread only, like the methods above.
+    static native boolean copyFrame(Bitmap bitmap);
+
+    // Pure bitmap transform on an owned snapshot; never reads the live core.
+    static native boolean scaleFrame(Bitmap source, Bitmap destination, int factor);
 }

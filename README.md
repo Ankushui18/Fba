@@ -6,18 +6,18 @@ update of the original `com.joyemu.fbaapp`.
 
 ## Install and play
 
-**0.5.0 is the FBA4droid parity test.** The signed Recovery APKs are for
-64-bit ARM phones on Android 8 or later. The supplied builds use the 0.4.0
-Recovery app ID and certificate, with versionCode 5: install one **over
-0.4.0 Recovery without uninstalling** to keep its private data. Offline and
-Link beta replace one another. Neither is an update or a migration for the
-original FBA4droid, the original FBA Arcade test app, or v0.1/v0.2. A separately
-built APK will only update an existing install if it uses the same signer.
+**0.5.1 is the image-filter timing fix for the 0.5.0 parity test.** The signed
+Recovery APKs are for 64-bit ARM phones on Android 8 or later. They keep the
+Recovery app ID and signer, with versionCode 6. Install **over 0.5.0 or 0.4.0
+Recovery without uninstalling** to keep its private data. Offline and Link
+beta replace one another. Neither updates the original FBA4droid, the original
+FBA Arcade test app, or v0.1/v0.2. A separately built APK only updates an
+existing install if it uses the same signer.
 
-| 0.5.0 test build output | Use it for |
+| 0.5.1 test build output | Use it for |
 |---|---|
-| `fba-arcade-0.5.0-recovery-arm64-v8a-test.apk` | Offline play, **zero Android permissions**. |
-| `fba-arcade-0.5.0-recovery-link-arm64-v8a-test.apk` | Optional [Link beta](docs/LINK_PLAY.md), including all solo features. Two-phone Android transport testing is pending. |
+| `fba-arcade-0.5.1-recovery-arm64-v8a-test.apk` | Offline play, **zero Android permissions**. |
+| `fba-arcade-0.5.1-recovery-link-arm64-v8a-test.apk` | Optional [Link beta](docs/LINK_PLAY.md), including all solo features. Two-phone Android transport testing is pending. |
 
 The previous [0.4.0 Recovery prerelease](https://github.com/Ankushui18/Fba/releases/tag/v0.4.0-recovery)
 is unchanged. See the [feature-by-feature 1.77 comparison](docs/FBA4DROID_PARITY.md)
@@ -44,12 +44,21 @@ for the restored features and remaining compatibility gaps.
 | **Pause → Cheats / DIP switches** | Choose a cheat or cabinet option, then **Apply → Resume**. Cheats start off and restart clears active choices. Some DIP changes need restart. Cheats may already have changed game memory when turned off. |
 | **Settings → Virtual controls** or **Pause → Controls** | Four built-in skins. From library Settings, **Controller skin → Import folder** copies legacy PNG frames from the chosen skin folder. Apply D-pad or round stick art. Edit layouts independently in portrait and landscape; Auto uses digital button mappings, Compact uses smaller fixed positions. |
 | **Virtual controls / Physical keys** | Independent joystick and button touch expansion under **Edit layout → Options**, plus opacity, scale, dead zone, animation and haptics. Set combinations on A–F or Combo 1–4; bind the latter under **Physical keys → EXT1–4**. Held-button repeat starts after a short hold. Up to four local digital input ports. |
-| **Pause → Display** | Fit/fill/aspect ratios, integer scale, **Original size (1×)**, orientation, fullscreen portrait, sharp/bilinear or HQ2x/HQ3x/HQ4x, render frameskip, FPS and sound. Optional GPU canvas takes effect next launch. |
+| **Pause → Display** | Fit/fill/aspect ratios, integer scale, **Original size (1×)**, orientation, fullscreen portrait, sharp/bilinear or HQ2x/HQ3x/HQ4x, render frameskip, game/video FPS and sound. Optional GPU canvas takes effect next launch. |
 | **Settings → Reset game settings** | Clear global and per-game playback preferences without removing the library, folder grant, imported skins or notes, cheats, patches, states, thumbnails, favorites or history. |
 
 The library gear edits global defaults. In a game settings panel, choose
 **For this game** to customize it or **Use global** to clear overrides. The
 round stick maps digital directions, not analog trackball or lightgun input.
+
+### Image-filter performance
+
+HQx and Canvas drawing run on a separate, lower-priority presenter. If it
+falls behind, it replaces the queued image rather than delaying a game step,
+audio write, or Link exchange. The FPS overlay is **game / video** (emulated
+frames / frames submitted to Android). HQx keeps the same pixels; on a slower
+phone try HQ2x or Bilinear if video FPS is low. **Original size (1×)** bypasses
+filtering, and screenshots and save previews still use the raw core frame.
 
 ### Compatibility limits
 
@@ -106,8 +115,8 @@ export ANDROID_NDK_HOME="$ANDROID_SDK_ROOT/ndk/28.2.13676358"
 ./tools/build-apk.sh
 ARCADE_LINK=1 ./tools/build-apk.sh
 ./tools/test.sh
-./tools/verify-apk.sh artifacts/fba-arcade-0.5.0-arm64-v8a-test.apk
-./tools/verify-apk.sh artifacts/fba-arcade-0.5.0-link-arm64-v8a-test.apk --link
+./tools/verify-apk.sh artifacts/fba-arcade-0.5.1-arm64-v8a-test.apk
+./tools/verify-apk.sh artifacts/fba-arcade-0.5.1-link-arm64-v8a-test.apk --link
 ```
 
 No Gradle/Maven dependencies or legacy APK files are needed. `tools/build-core.sh`

@@ -15,15 +15,14 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.atomic.AtomicIntegerArray;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicIntegerArray;
 import java.util.concurrent.locks.LockSupport;
 
-/** Runs the native core, audio and surface rendering away from the Android UI thread. */
+/** Runs the native core and audio. Hands raw snapshots to a separate presenter. */
 final class GameSession implements Runnable {
-    private static final int ORIGINAL_SIZE = 5;
     static final AudioAttributes AUDIO = new AudioAttributes.Builder()
             .setUsage(AudioAttributes.USAGE_GAME).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build();
     private static final ExecutorService WORKER = Executors.newSingleThreadExecutor(task -> new Thread(task, "arcade-core"));
@@ -34,7 +33,7 @@ final class GameSession implements Runnable {
         void waiting(GameSession session, boolean waiting);
     }
 
-    private final SurfaceHolder surface;
+    private final FrameRenderer renderer;
     private final File rom, systemDir, saveDir, cover;
     private final Context app;
     final PatchStore.Entry patch;
@@ -50,15 +49,11 @@ final class GameSession implements Runnable {
     private int appliedInputReset;
     final AtomicIntegerArray keys = new AtomicIntegerArray(4);
     final AtomicIntegerArray stick = new AtomicIntegerArray(4);
-    volatile int touchPort, turboMask, turboRate = 10, displayMode, frameSkip, measuredFps;
+    volatile int touchPort, turboMask, turboRate = 10, displayMode, frameSkip, measuredFps, drawnFps;
     volatile int filter;
     volatile boolean gpu, mirrorHardware;
-    private boolean gpuActive, gpuUnavailable, hqxUnavailable;
     volatile boolean foreground, paused, soundAllowed;
     private volatile boolean stopping;
-    private Bitmap frame;
-    private final Paint paint = new Paint();
-    private final RectF destination = new RectF();
 
     GameSession(Context context, SurfaceHolder surface, File rom, File systemDir, File saveDir, File cover,
                 PatchStore.Entry patch, int launchSlot, GameLink link, Callbacks callbacks) {
@@ -68,12 +63,11 @@ final class GameSession implements Runnable {
         this.launchSlot = launchSlot;
         states = new StateStore(new File(app.getNoBackupFilesDir(), "states"), rom, patch == null ? null : patch.id);
         this.cover = patch == null ? cover : patch.preview();
-        this.surface = surface;
+        renderer = new FrameRenderer(surface);
         this.rom = rom;
         this.systemDir = systemDir;
         this.saveDir = patch == null ? saveDir : new File(saveDir, "ips/" + patch.id);
         this.callbacks = callbacks;
-        paint.setFilterBitmap(false);
     }
 
     String romName() { return rom.getName(); }
@@ -82,6 +76,7 @@ final class GameSession implements Runnable {
     void start() { WORKER.execute(this); }
     void stop() {
         stopping = true;
+        renderer.close();
         commands.clear();
         if (link != null) link.stop();
     }
@@ -106,22 +101,28 @@ final class GameSession implements Runnable {
     void screenshot() throws IOException { writeScreenshot(cover); }
 
     private void writeScreenshot(File dest) throws IOException {
-        if (!refreshFrame(0)) throw new IOException("No game frame is available yet.");
-        int rotation = Core.rotation();
-        boolean vertical = (rotation & 1) != 0;
-        float aspect = gameAspect(rotation);
-        int w = aspect >= 1 ? 640 : Math.max(1, Math.round(480 * aspect));
-        int h = aspect >= 1 ? Math.max(1, Math.round(640 / aspect)) : 480;
-        Bitmap shot = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+        int size = Core.frameSize(), width = size >>> 16, height = size & 0xffff;
+        if (width == 0 || height == 0) throw new IOException("No game frame is available yet.");
+        // A screenshot/slot preview always uses the raw core image, not a presenter buffer.
+        Bitmap raw = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888, false);
         try {
-            Canvas c = new Canvas(shot);
-            c.drawColor(Color.BLACK);
-            c.translate(w / 2f, h / 2f);
-            c.rotate(-90 * rotation);
-            float dw = (vertical ? h : w) / 2f, dh = (vertical ? w : h) / 2f;
-            c.drawBitmap(frame, null, new RectF(-dw, -dh, dw, dh), new Paint());
-            ImageFiles.write(dest, shot);
-        } finally { shot.recycle(); }
+            if (!Core.copyFrame(raw)) throw new IOException("Couldn't capture this game frame.");
+            int rotation = Core.rotation();
+            boolean vertical = (rotation & 1) != 0;
+            float aspect = FrameRenderer.aspect(width, height, rotation, Core.aspect());
+            int w = aspect >= 1 ? 640 : Math.max(1, Math.round(480 * aspect));
+            int h = aspect >= 1 ? Math.max(1, Math.round(640 / aspect)) : 480;
+            Bitmap shot = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+            try {
+                Canvas c = new Canvas(shot);
+                c.drawColor(Color.BLACK);
+                c.translate(w / 2f, h / 2f);
+                c.rotate(-90 * rotation);
+                float dw = (vertical ? h : w) / 2f, dh = (vertical ? w : h) / 2f;
+                c.drawBitmap(raw, null, new RectF(-dw, -dh, dw, dh), new Paint());
+                ImageFiles.write(dest, shot);
+            } finally { shot.recycle(); }
+        } finally { raw.recycle(); }
     }
 
     private long input(double fps) {
@@ -143,7 +144,7 @@ final class GameSession implements Runnable {
 
     @Override public void run() {
         if (stopping) return;
-        gpuActive = gpu;
+        boolean gpuActive = gpu;
         boolean started = false;
         String error = null;
         AudioTrack audio = null;
@@ -185,17 +186,24 @@ final class GameSession implements Runnable {
                 link.connect(rom);
                 if (stopping) return;
             }
+            renderer.start(gpuActive);
             callbacks.ready(this);
             boolean playing = false;
             int audioRate = 0;
             long nextFrame = 0, tick = 0, rateStart = System.nanoTime();
             int rateFrames = 0;
-            long lastDraw = -5, checkpoint = link == null ? 0 : Core.linkCheckpoint();
+            long lastOffer = -5, lastPosted = 0, checkpoint = link == null ? 0 : Core.linkCheckpoint();
             boolean peerWaiting = false;
             while (!stopping) {
+                if (renderer.failed()) { error = "Couldn't draw the game on this device."; break; }
                 Runnable task = commands.poll();
-                if (task != null) { task.run(); nextFrame = 0; continue; }
-                boolean waiting = !foreground || paused || !surface.getSurface().isValid();
+                if (task != null) {
+                    renderer.discard();
+                    task.run();
+                    nextFrame = 0;
+                    continue;
+                }
+                boolean waiting = !foreground || paused || !renderer.isReady();
                 if (nextFrame == 0) nextFrame = System.nanoTime();
                 double fps = Core.fps();
                 if (!(fps >= 10 && fps <= 240)) fps = 60;
@@ -208,10 +216,12 @@ final class GameSession implements Runnable {
                     if (stopping) break;
                 }
                 if (waiting) {
+                    renderer.discard();
                     autoFire.reset();
                     if (playing) { silence(audio); playing = false; }
                     nextFrame = 0;
-                    measuredFps = rateFrames = 0;
+                    measuredFps = drawnFps = rateFrames = 0;
+                    lastPosted = renderer.posted();
                     rateStart = System.nanoTime();
                     LockSupport.parkNanos(20_000_000);
                     continue;
@@ -221,19 +231,6 @@ final class GameSession implements Runnable {
                 int count = Core.step(pad, samples);
                 if (count < 0) { error = "The emulator stopped this game."; break; }
                 if (link != null) checkpoint = tick == 1 || tick % 120 == 0 ? Core.linkCheckpoint() : 0;
-                int skip = frameSkip;
-                // Auto mode can skip a late draw, but never skips core steps or audio.
-                if (skip < 0 ? tick - lastDraw >= 5 || System.nanoTime() < nextFrame + period : tick % (skip + 1) == 0) {
-                    render();
-                    lastDraw = tick;
-                }
-                rateFrames++;
-                long elapsed = System.nanoTime() - rateStart;
-                if (elapsed >= 1_000_000_000L) {
-                    measuredFps = (int) Math.round(rateFrames * 1_000_000_000.0 / elapsed);
-                    rateFrames = 0;
-                    rateStart += elapsed;
-                }
                 if (soundAllowed) {
                     int rate = Core.sampleRate();
                     if (rate != audioRate) {
@@ -256,6 +253,21 @@ final class GameSession implements Runnable {
                     silence(audio);
                     playing = false;
                 }
+                // Do not delay PCM for HQx or a busy surface. The presenter keeps only the newest
+                // queued snapshot, and a skipped draw never skips a core step or Link exchange.
+                int skip = frameSkip;
+                boolean offer = skip < 0 ? tick - lastOffer >= 5 || System.nanoTime() < nextFrame + period : tick % (skip + 1) == 0;
+                if (offer && renderer.offer(displayMode, filter)) lastOffer = tick;
+                rateFrames++;
+                long elapsed = System.nanoTime() - rateStart;
+                if (elapsed >= 1_000_000_000L) {
+                    long posted = renderer.posted();
+                    measuredFps = (int) Math.round(rateFrames * 1_000_000_000.0 / elapsed);
+                    drawnFps = (int) Math.round((posted - lastPosted) * 1_000_000_000.0 / elapsed);
+                    rateFrames = 0;
+                    lastPosted = posted;
+                    rateStart += elapsed;
+                }
                 nextFrame += period;
                 long remaining = nextFrame - System.nanoTime();
                 if (remaining > 0) LockSupport.parkNanos(remaining);
@@ -267,13 +279,15 @@ final class GameSession implements Runnable {
             error = "Couldn't load the FBNeo engine on this device.";
         } catch (RuntimeException unavailable) {
             error = "Couldn't render or play this set on the device.";
+        } catch (OutOfMemoryError exhausted) {
+            error = "Not enough memory to play this game.";
         } finally {
+            renderer.close();
             if (link != null) link.stop();
             if (audio != null) { silence(audio); audio.release(); }
             if (started) Core.close();
             if (definition != null) definition.delete();
             LocalFiles.deleteTree(isolated);
-            if (frame != null) frame.recycle();
             if (error != null && !stopping) callbacks.failed(this, error);
         }
     }
@@ -301,68 +315,5 @@ final class GameSession implements Runnable {
     private static void silence(AudioTrack track) {
         try { track.pause(); track.flush(); }
         catch (IllegalStateException ignored) { /* The route may have disconnected. */ }
-    }
-
-    private boolean refreshFrame(int mode) {
-        int size = Core.frameSize(), w = size >>> 16, h = size & 0xffff;
-        if (w <= 0 || h <= 0) return false;
-        int scale = !hqxUnavailable && mode >= 2 && mode <= 4 && w <= 2048 / mode && h <= 2048 / mode && w * h * mode * mode <= 3 * 1024 * 1024 ? mode : 1;
-        w *= scale; h *= scale;
-        if (frame == null || w != frame.getWidth() || h != frame.getHeight()) {
-            if (frame != null) frame.recycle();
-            frame = null;
-            try { frame = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888); }
-            catch (OutOfMemoryError exhausted) {
-                if (scale == 1) throw exhausted;
-                hqxUnavailable = true;
-                return refreshFrame(0);
-            }
-        }
-        if (Core.copyFrame(frame, scale)) return true;
-        if (scale == 1) return false;
-        hqxUnavailable = true;
-        return refreshFrame(0);
-    }
-
-    private void render() {
-        int mode = displayMode, scaling = mode == ORIGINAL_SIZE ? 0 : filter;
-        if (!refreshFrame(scaling)) return;
-        int rawSize = Core.frameSize(), w = rawSize >>> 16, h = rawSize & 0xffff;
-        int rotation = Core.rotation();
-        boolean sideways = (rotation & 1) != 0;
-        float aspect = gameAspect(rotation);
-        paint.setFilterBitmap(scaling == 1);
-        Canvas canvas = null;
-        if (gpuActive && !gpuUnavailable) try { canvas = surface.lockHardwareCanvas(); }
-        catch (IllegalStateException | UnsupportedOperationException unavailable) { gpuUnavailable = true; }
-        if (canvas == null) canvas = surface.lockCanvas();
-        if (canvas == null) return;
-        try {
-            canvas.drawColor(Color.BLACK);
-            if (mode == 2) aspect = 4f / 3f;
-            else if (mode == 3) aspect = 3f / 4f;
-            float dw = Math.min(canvas.getWidth(), canvas.getHeight() * aspect), dh = dw / aspect;
-            if (mode == 1) { dw = canvas.getWidth(); dh = canvas.getHeight(); }
-            else if (mode == 4 || mode == ORIGINAL_SIZE) {
-                int rawW = sideways ? h : w, rawH = sideways ? w : h;
-                float factor = Math.min((float) canvas.getWidth() / rawW, (float) canvas.getHeight() / rawH);
-                if (factor > 1) factor = mode == ORIGINAL_SIZE ? 1 : (int) factor;
-                dw = rawW * factor; dh = rawH * factor;
-            }
-            float halfW = (sideways ? dh : dw) / 2, halfH = (sideways ? dw : dh) / 2;
-            float left = (canvas.getWidth() - dw) / 2, top = (canvas.getHeight() - dh) / 2;
-            if (mode == ORIGINAL_SIZE) { left = (int) left; top = (int) top; }
-            canvas.translate(left + dw / 2, top + dh / 2);
-            canvas.rotate(-90 * rotation);
-            destination.set(-halfW, -halfH, halfW, halfH);
-            canvas.drawBitmap(frame, null, destination, paint);
-        } finally {
-            surface.unlockCanvasAndPost(canvas);
-        }
-    }
-    private float gameAspect(int rotation) {
-        float aspect = Core.aspect();
-        if (aspect >= .2f && aspect <= 8f) return aspect;
-        return (rotation & 1) != 0 ? (float) frame.getHeight() / frame.getWidth() : (float) frame.getWidth() / frame.getHeight();
     }
 }
