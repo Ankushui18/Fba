@@ -10,7 +10,7 @@ import android.view.View;
 final class PadPreview extends View {
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final boolean ornament;
-    private Drawable pad, first, second;
+    private Drawable pad, knob, first, second;
     private PadSkin skin;
 
     PadPreview(Context context, PadSkin skin, boolean ornament) {
@@ -23,7 +23,8 @@ final class PadPreview extends View {
     void setSkin(PadSkin next) {
         if (next == skin) return;
         skin = next;
-        pad = getContext().getDrawable(ornament ? R.drawable.legacy_classic_button_dpad : skin.directions[0]);
+        pad = getContext().getDrawable(skin.circle != 0 ? skin.circle : ornament ? R.drawable.legacy_classic_button_dpad : skin.directions[0]);
+        knob = skin.knob == 0 ? null : getContext().getDrawable(skin.knob);
         first = getContext().getDrawable(skin.buttons[0][0]);
         second = getContext().getDrawable(skin.buttons[1][0]);
         invalidate();
@@ -48,10 +49,12 @@ final class PadPreview extends View {
             c.drawCircle(10, 43, 2, paint);
             c.drawCircle(115, -44, 2, paint);
             draw(c, pad, 5, -35, 70);
+            if (knob != null) draw(c, knob, 25, -15, 30);
             draw(c, second, 74, -30, 34);
             draw(c, first, 62, 3, 39);
         } else {
             draw(c, pad, 6, -25, 50);
+            if (knob != null) draw(c, knob, 20, -11, 22);
             draw(c, first, 62, -14, 28);
             draw(c, second, 90, -21, 27);
         }

@@ -3,7 +3,6 @@ package io.github.ankushui18.fbaoffline;
 import android.content.Context;
 import android.graphics.Color;
 import android.graphics.drawable.Drawable;
-import android.os.Build;
 import android.view.Gravity;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
@@ -17,50 +16,59 @@ import android.widget.TextView;
 
 /** Black full-screen stage in landscape, with a dedicated controller dock in portrait. */
 final class GameScreen extends FrameLayout {
-    interface Actions {
-        void togglePause();
-        void toggleSound();
-        void chooseSkin();
-        void toggleControls();
-        void exit();
-    }
+    enum Action { RESUME, SAVE, LOAD, SCREENSHOT, CHEATS, DIPS, CONTROLLER, DISPLAY, KEYS, RESTART, INFO, EXIT, PLAYER }
+    interface Actions { void invoke(Action action); }
 
     private final ArcadeUi ui;
     private final Stage stage;
     private final FrameLayout menu;
-    private TextView skinValue, soundValue, controlsValue;
+    private GameSession session;
 
-    GameScreen(Context context, String name, PadSkin skin, boolean touchVisible, boolean muted, Actions actions) {
+    GameScreen(Context context, String name, PadSkin skin, boolean touchVisible, GameLink link, Actions actions) {
         super(context);
         ui = new ArcadeUi(context);
         setBackgroundColor(Color.BLACK);
-        stage = new Stage(context, name, skin, touchVisible, actions::togglePause);
+        stage = new Stage(context, name, skin, touchVisible, actions);
         addView(stage, new LayoutParams(-1, -1));
-        menu = pauseMenu(context, name, actions);
+        if (link != null) stage.loading.setText(link.status() + "\nOpen Pause → Exit link to cancel.");
+        menu = pauseMenu(context, name, actions, link != null);
         addView(menu, new LayoutParams(-1, -1));
         menu.setVisibility(GONE);
         setControlsVisible(touchVisible);
         setSkin(skin);
-        setMuted(muted);
     }
 
     SurfaceHolder surface() { return stage.pixels.getHolder(); }
-    void attach(GameSession session) { stage.deck.attach(session); }
-    void ready() { stage.loading.setVisibility(GONE); }
-    void setInputEnabled(boolean enabled) { stage.deck.setInputEnabled(enabled && stage.controlsVisible); }
-
-    void setSkin(PadSkin skin) {
-        stage.deck.setSkin(skin);
-        skinValue.setText(skin.title);
+    void attach(GameSession session) { this.session = session; stage.deck.attach(session); }
+    void ready() { stage.loading.setVisibility(GONE); stage.layout = null; stage.requestLayout(); }
+    void peerWait(boolean waiting) {
+        stage.loading.setText("Other player paused");
+        stage.loading.setVisibility(waiting ? VISIBLE : GONE);
     }
-
-    void setMuted(boolean muted) { soundValue.setText(muted ? "Off" : "On"); }
+    void setInputEnabled(boolean enabled) { stage.deck.setInputEnabled(enabled && stage.controlsVisible); }
+    void setSkin(PadSkin skin) { stage.skin = skin; stage.deck.setSkin(skin); stage.playerArt(); }
+    void setFeedback(boolean animated, boolean haptic) { stage.deck.setFeedback(animated, haptic); }
+    void setPlayer(int port) { stage.touchPlayer = port; stage.playerArt(); }
+    void setPad(PadProfile portrait, PadProfile landscape, int[] comboBits, boolean showPlayer, int mode, boolean fullScreen) {
+        stage.profiles = new PadProfile[]{portrait, landscape};
+        stage.combos = comboBits;
+        stage.showPlayer = showPlayer;
+        stage.mode = mode;
+        stage.fullScreen = fullScreen;
+        stage.layout = null;
+        stage.requestLayout();
+    }
 
     void setControlsVisible(boolean visible) {
         stage.controlsVisible = visible;
         stage.deck.setVisibility(visible ? VISIBLE : GONE);
-        controlsValue.setText(visible ? "On" : "Off");
         stage.requestLayout();
+    }
+
+    void setFps(boolean show) {
+        stage.fps.setVisibility(show ? VISIBLE : GONE);
+        stage.removeCallbacks(stage.fpsRefresh);
+        if (show) stage.post(stage.fpsRefresh);
     }
 
     void setPaused(boolean paused) {
@@ -72,68 +80,82 @@ final class GameScreen extends FrameLayout {
 
     void focusStage() { stage.requestFocus(); }
 
-    private FrameLayout pauseMenu(Context context, String name, Actions actions) {
+    private FrameLayout pauseMenu(Context context, String name, Actions actions, boolean linked) {
         FrameLayout scrim = new FrameLayout(context);
         scrim.setBackgroundColor(0xc507111e);
         scrim.setClickable(true);
         scrim.setFocusableInTouchMode(true);
-
-        FrameLayout bound = ui.widthLimit(380);
+        FrameLayout bound = ui.widthLimit(460);
         LayoutParams centered = new LayoutParams(-1, -2, Gravity.CENTER);
-        centered.setMargins(ui.dp(18), ui.dp(12), ui.dp(18), ui.dp(12));
+        centered.setMargins(ui.dp(12), ui.dp(9), ui.dp(12), ui.dp(9));
         scrim.addView(bound, centered);
         ScrollView scroll = new ScrollView(context);
-        scroll.setBackground(ui.surface(ArcadeUi.NIGHT, ArcadeUi.NIGHT_EDGE, 22));
+        scroll.setBackground(ui.surface(ArcadeUi.NIGHT, ArcadeUi.NIGHT_EDGE, 18));
         scroll.setClipToOutline(true);
         scroll.setVerticalScrollBarEnabled(false);
         bound.addView(scroll, new LayoutParams(-1, -2));
         LinearLayout card = ui.column();
-        card.setPadding(ui.dp(18), ui.dp(17), ui.dp(18), ui.dp(13));
+        card.setPadding(ui.dp(12), ui.dp(13), ui.dp(12), ui.dp(10));
         scroll.addView(card);
-        card.addView(ui.eyebrow("GAME PAUSED", 0xff8fcbff));
-        ui.space(card, 5);
-        TextView title = ui.text(name, 24, Color.WHITE, true);
-        ArcadeUi.singleLine(title);
-        card.addView(title);
-        ui.space(card, 14);
-        item(card, R.drawable.legacy_ui_start, "Resume game", null, true, actions::togglePause);
+        LinearLayout heading = ui.row();
+        LinearLayout title = ui.column();
+        title.addView(ui.eyebrow("GAME MENU", 0xff8fcbff));
+        ui.space(title, 4);
+        TextView nameLabel = ui.text(name, 19, Color.WHITE, true);
+        ArcadeUi.singleLine(nameLabel);
+        title.addView(nameLabel);
+        heading.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
+        android.widget.Button resume = ui.button("Resume", ArcadeUi.BLUE, Color.WHITE, 10);
+        resume.setOnClickListener(v -> actions.invoke(Action.RESUME));
+        heading.addView(resume, new LinearLayout.LayoutParams(-2, ui.dp(44)));
+        card.addView(heading);
         ui.space(card, 8);
-        soundValue = item(card, R.drawable.legacy_ui_menu_setting, "Game sound", "On", false, actions::toggleSound);
-        skinValue = item(card, R.drawable.legacy_ui_menu_keyconfig, "Controller skin", "", false, actions::chooseSkin);
-        controlsValue = item(card, R.drawable.legacy_ui_menu_softinput, "Touch controls", "On", false, actions::toggleControls);
-        View line = new View(context);
-        line.setBackgroundColor(ArcadeUi.NIGHT_EDGE);
-        card.addView(line, new LinearLayout.LayoutParams(-1, ui.dp(1)));
-        item(card, R.drawable.legacy_ui_menu_quit, "Back to library", null, false, actions::exit);
+        if (linked) {
+            grid(card, actions, new String[]{"Controls", "Display", "Keys", "Game info", "Exit link"},
+                    new int[]{R.drawable.legacy_ui_menu_softinput, R.drawable.legacy_ui_menu_list, R.drawable.legacy_ui_menu_keyconfig,
+                            R.drawable.legacy_ui_menu_gameinfo, R.drawable.legacy_ui_menu_quit},
+                    new Action[]{Action.CONTROLLER, Action.DISPLAY, Action.KEYS, Action.INFO, Action.EXIT});
+            return scrim;
+        }
+        grid(card, actions, new String[]{"Save", "Load", "Screenshot", "Cheats", "DIP switches", "Controls", "Display", "Keys",
+                        "Restart", "Game info", "Exit game"},
+                new int[]{R.drawable.legacy_ui_menu_savestate, R.drawable.legacy_ui_menu_loadstate, R.drawable.legacy_ui_menu_screenshot,
+                        R.drawable.legacy_ui_menu_cheat, R.drawable.legacy_ui_menu_dipswitch, R.drawable.legacy_ui_menu_softinput,
+                        R.drawable.legacy_ui_menu_list, R.drawable.legacy_ui_menu_keyconfig, R.drawable.legacy_ui_menu_restart,
+                        R.drawable.legacy_ui_menu_gameinfo, R.drawable.legacy_ui_menu_quit},
+                new Action[]{Action.SAVE, Action.LOAD, Action.SCREENSHOT, Action.CHEATS, Action.DIPS, Action.CONTROLLER,
+                        Action.DISPLAY, Action.KEYS, Action.RESTART, Action.INFO, Action.EXIT});
         return scrim;
     }
 
-    private TextView item(LinearLayout card, int icon, String label, String value, boolean primary, Runnable onClick) {
-        LinearLayout row = ui.row();
-        int fill = primary ? ArcadeUi.BLUE : ArcadeUi.NIGHT;
-        row.setBackground(ui.tappable(fill, fill, 12, true));
-        row.setPadding(ui.dp(10), ui.dp(7), ui.dp(10), ui.dp(7));
-        row.setMinimumHeight(ui.dp(48));
-        ImageView image = ui.art(icon);
-        image.setColorFilter(primary ? Color.WHITE : ArcadeUi.NIGHT_DIM);
-        row.addView(image, new LinearLayout.LayoutParams(ui.dp(24), ui.dp(24)));
-        TextView text = ui.text(label, 15, Color.WHITE, true);
-        LinearLayout.LayoutParams space = new LinearLayout.LayoutParams(0, -2, 1);
-        space.leftMargin = ui.dp(10);
-        row.addView(text, space);
-        TextView current = null;
-        if (value != null) {
-            current = ui.text(value, 12, ArcadeUi.NIGHT_DIM, true);
-            current.setGravity(Gravity.CENTER);
-            current.setPadding(ui.dp(7), ui.dp(4), ui.dp(7), ui.dp(4));
-            current.setBackground(ui.surface(0xff1a2c43, 0xff1a2c43, 6));
-            row.addView(current);
+    private void grid(LinearLayout card, Actions actions, String[] labels, int[] icons, Action[] ids) {
+        for (int i = 0; i < labels.length; i += 3) {
+            LinearLayout line = ui.row();
+            for (int j = i; j < i + 3; j++) {
+                LinearLayout tile = ui.column();
+                tile.setGravity(Gravity.CENTER);
+                tile.setPadding(ui.dp(2), ui.dp(7), ui.dp(2), ui.dp(7));
+                LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, -1, 1);
+                p.setMargins(ui.dp(2), ui.dp(3), ui.dp(2), ui.dp(3));
+                if (j < labels.length) {
+                    Action target = ids[j];
+                    tile.setMinimumHeight(ui.dp(62));
+                    tile.setBackground(ui.tappable(0xff1b3149, ArcadeUi.NIGHT_EDGE, 9, true));
+                    ImageView image = ui.art(icons[j]);
+                    image.setColorFilter(0xffb8defd);
+                    tile.addView(image, new LinearLayout.LayoutParams(ui.dp(23), ui.dp(23)));
+                    ui.space(tile, 5);
+                    TextView label = ui.text(labels[j], 12, Color.WHITE, true);
+                    label.setGravity(Gravity.CENTER);
+                    tile.addView(label, new LinearLayout.LayoutParams(-1, -2));
+                    tile.setContentDescription(labels[j]);
+                    tile.setFocusable(true);
+                    tile.setOnClickListener(v -> actions.invoke(target));
+                }
+                line.addView(tile, p);
+            }
+            card.addView(line, new LinearLayout.LayoutParams(-1, -2));
         }
-        if (Build.VERSION.SDK_INT >= 28) row.setScreenReaderFocusable(true);
-        row.setFocusable(true);
-        row.setOnClickListener(v -> onClick.run());
-        card.addView(row, new LinearLayout.LayoutParams(-1, -2));
-        return current;
     }
 
     private final class Stage extends FrameLayout {
@@ -142,17 +164,33 @@ final class GameScreen extends FrameLayout {
         final TextView loading;
         private final View dock;
         private final LinearLayout title;
-        private final ImageButton pause;
+        private final ImageButton pause, player;
+        private final TextView fps;
+        private final Runnable fpsRefresh = new Runnable() {
+            @Override public void run() {
+                if (fps.getVisibility() != VISIBLE) return;
+                int n = session == null ? 0 : session.measuredFps;
+                fps.setText(n > 0 ? n + " FPS" : "— FPS");
+                postDelayed(this, 650);
+            }
+        };
+        private PadSkin skin;
+        private PadProfile[] profiles = {new PadProfile(), new PadProfile()};
+        private int[] combos = new int[4];
+        private boolean showPlayer, fullScreen;
+        private int mode;
+        private int touchPlayer;
         private PadLayout layout;
         private int previousWidth = -1, previousHeight = -1;
         private float previousDensity;
         private boolean previousControls, controlsVisible;
 
-        Stage(Context context, String name, PadSkin skin, boolean showControls, Runnable openMenu) {
+        Stage(Context context, String name, PadSkin skin, boolean showControls, Actions actions) {
             super(context);
             setFocusableInTouchMode(true);
             setMotionEventSplittingEnabled(true);
             controlsVisible = showControls;
+            this.skin = skin;
             dock = new View(context);
             dock.setBackground(ui.gradient(0xff1b344e, 0xff0e1a2a, 0));
             addView(dock);
@@ -178,8 +216,26 @@ final class GameScreen extends FrameLayout {
             pause = ui.icon(R.drawable.legacy_classic_button_pause, "Pause game", 0xaa101e30, 0, 14, 6);
             Drawable frame = TouchDeck.buttonArt(context, R.drawable.legacy_classic_button_pause, R.drawable.legacy_classic_button_pause_p);
             pause.setImageDrawable(frame);
-            pause.setOnClickListener(v -> openMenu.run());
+            pause.setOnClickListener(v -> actions.invoke(Action.RESUME));
+            player = ui.icon(skin.player[0], "Change touch player", Color.TRANSPARENT, 0, 10, 0);
+            player.setOnClickListener(v -> actions.invoke(Action.PLAYER));
+            addView(player);
             addView(pause);
+            fps = ui.eyebrow("— FPS", 0xff8bc6ff);
+            fps.setGravity(Gravity.CENTER);
+            fps.setBackground(ui.surface(0x99101e30, 0x99101e30, 7));
+            fps.setVisibility(GONE);
+            addView(fps);
+        }
+
+        void playerArt() {
+            player.setImageResource(skin.player[touchPlayer]);
+            player.setContentDescription("Touch player " + (touchPlayer + 1) + ". Tap to change.");
+        }
+
+        @Override protected void onDetachedFromWindow() {
+            removeCallbacks(fpsRefresh);
+            super.onDetachedFromWindow();
         }
 
         @Override protected void onMeasure(int widthSpec, int heightSpec) {
@@ -187,7 +243,9 @@ final class GameScreen extends FrameLayout {
             setMeasuredDimension(w, h);
             float density = getResources().getDisplayMetrics().density;
             if (layout == null || w != previousWidth || h != previousHeight || density != previousDensity || previousControls != controlsVisible) {
-                layout = new PadLayout(w, h, density, controlsVisible);
+                layout = new PadLayout(w, h, density, controlsVisible, profiles[w > h ? 1 : 0], combos, showPlayer, false, mode, session == null ? 0 : session.inputMask(touchPlayer), fullScreen);
+                pause.setAlpha(layout.opacity);
+                player.setAlpha(layout.opacity);
                 previousWidth = w;
                 previousHeight = h;
                 previousDensity = density;
@@ -202,6 +260,9 @@ final class GameScreen extends FrameLayout {
             TouchDeck.measureExactly(deck, w, h);
             PadLayout.Box menuBox = layout.controls[PadLayout.MENU];
             TouchDeck.measureExactly(pause, menuBox.w, menuBox.h);
+            PadLayout.Box playerBox = layout.controls[PadLayout.PLAYER];
+            TouchDeck.measureExactly(player, playerBox.w, playerBox.h);
+            TouchDeck.measureExactly(fps, Math.min(w, ui.dp(66)), Math.min(h, ui.dp(23)));
         }
 
         @Override protected void onLayout(boolean changed, int l, int t, int r, int b) {
@@ -212,6 +273,9 @@ final class GameScreen extends FrameLayout {
             TouchDeck.position(deck, 0, 0);
             PadLayout.Box menuBox = layout.controls[PadLayout.MENU];
             TouchDeck.position(pause, menuBox.x, menuBox.y);
+            PadLayout.Box playerBox = layout.controls[PadLayout.PLAYER];
+            TouchDeck.position(player, playerBox.x, playerBox.y);
+            TouchDeck.position(fps, Math.max(0, (getWidth() - fps.getMeasuredWidth()) / 2), layout.video.y + ui.dp(3));
         }
     }
 }

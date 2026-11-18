@@ -7,11 +7,11 @@
         android:extractNativeLibs="false"
         android:icon="@drawable/legacy_ui_launcher"
         android:roundIcon="@drawable/legacy_ui_launcher_round"
-        android:label="FBA Offline"
+        android:label="FBA Arcade"
         android:theme="@style/ArcadeTheme"
         android:usesCleartextTraffic="false">
         <activity
-            android:name=".MainActivity"
+            android:name="io.github.ankushui18.fbaoffline.MainActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
             android:enableOnBackInvokedCallback="true"
             android:exported="true">

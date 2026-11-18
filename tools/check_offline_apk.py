@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail-closed packaging/privacy checks for FBA Offline (not an antivirus)."""
+"""Fail-closed packaging/privacy checks for FBA Arcade (not an antivirus)."""
 import re
 from pathlib import Path
 import struct
@@ -10,21 +10,30 @@ from zipfile import ZIP_STORED, ZipFile
 from zlib import crc32
 
 from import_legacy_art import ART
+from link_manifest import LINK_PERMISSIONS
 
 
 ART_PATHS = {f"res/drawable-nodpi-v4/{name}" for name in ART}
-APP = "io.github.ankushui18.fbaoffline"
-NATIVE = re.compile(r"lib/(arm64-v8a|x86_64)/lib(retro|offlinefb)\.so\Z")
+APP = "io.github.ankushui18.fbaoffline"  # Java/JNI namespace, independent of installed application ID
+RECOVERY_APP = "io.github.ankushui18.fbaarcade.recovery"
+PACKAGES = {APP, "io.github.ankushui18.fbaarcade.test", RECOVERY_APP}
+CATALOG_ASSETS = {"assets/game-art.zip", "assets/game-catalog.tsv", "assets/game-cheats.zip", "assets/ips-targets.zip"}
+CATALOG_DIR = Path(__file__).resolve().parents[1] / "android/src/main"
+NATIVE = re.compile(r"lib/(arm64-v8a|x86_64)/lib(retro|offlinefb|hqx)\.so\Z")
 ASSETS = {
-    "assets/CORE-SOURCE.txt", "assets/FBNeo-LICENSE.txt",
-    *{"assets/licenses/" + name + ".txt" for name in ("dr_libs", "gba", "libchdr", "lzma", "snes", "ugui")},
+    "assets/CORE-SOURCE.txt", "assets/FBNeo-LICENSE.txt", *CATALOG_ASSETS,
+    *{"assets/licenses/" + name + ".txt" for name in ("dr_libs", "gba", "hqx", "hqx-authors", "libchdr", "lzma", "snes", "ugui")},
 }
 MARKERS = (
     b"baidu.com", b"qq.com", b"cn/waps", b"com/tencent/bugly",
     b"Landroid/webkit/", b"Ldalvik/system/DexClassLoader;", b"Ldalvik/system/InMemoryDexClassLoader;",
-    b"Ljava/net/", b"Ljavax/net/ssl/", b"Landroid/app/DownloadManager;",
+    b"Ljavax/net/ssl/", b"Landroid/app/DownloadManager;",
     b"REQUEST_INSTALL_PACKAGES", b"android.intent.action.INSTALL_PACKAGE",
 )
+LINK_JAVA_NETWORK = {f"Ljava/net/{name};".encode() for name in (
+    "InetAddress", "Inet4Address", "InterfaceAddress", "NetworkInterface", "InetSocketAddress", "SocketAddress",
+    "Socket", "ServerSocket", "SocketException", "SocketTimeoutException", "UnknownHostException",
+)}
 NETWORK_OR_EXEC = {
     "socket", "socketpair", "connect", "bind", "listen", "accept", "accept4",
     "send", "sendto", "sendmsg", "recv", "recvfrom", "recvmsg", "getaddrinfo", "gethostbyname",
@@ -64,18 +73,28 @@ def inspect_elf(data, label, abi, lib):
         require(not (imports & NETWORK_OR_EXEC), f"unexpected native imports: {imports & NETWORK_OR_EXEC} in {label}")
         dyn = subprocess.check_output(["readelf", "-W", "-d", str(path)], text=True)
         deps = set(re.findall(r"\(NEEDED\).*?\[(.*?)\]", dyn))
-        allowed = PLATFORM_LIBS | ({"libretro.so"} if lib == "offlinefb" else set())
+        allowed = PLATFORM_LIBS | ({"libretro.so", "libhqx.so"} if lib == "offlinefb" else set())
         require(deps <= allowed and "(TEXTREL)" not in dyn, f"unexpected native dependency/relocations: {label}: {deps}")
         if lib == "offlinefb":
-            require("libretro.so" in deps, f"JNI frontend isn't linked to built core: {label}")
+            require({"libretro.so", "libhqx.so"} <= deps, f"JNI frontend has missing core or filter linkage: {label}")
     require(not any(x in data.lower() for x in MARKERS[:4]), f"old tracker marker in {label}")
 
 
-def inspect_manifest(aapt2, apk):
+def inspect_manifest(aapt2, apk, link):
     tree = subprocess.check_output([aapt2, "dump", "xmltree", "--file", "AndroidManifest.xml", apk], text=True)
     tags = re.findall(r"^\s*E: (\S+)", tree, re.MULTILINE)
-    require(tags == ["manifest", "uses-sdk", "application", "activity", "intent-filter", "action", "category"],
-            f"unexpected manifest elements (including any permissions/components): {tags}")
+    permission_tags = ["uses-permission"] * len(LINK_PERMISSIONS) if link else []
+    require(tags == ["manifest", "uses-sdk", *permission_tags, "application", "activity", "intent-filter", "action", "category"],
+            f"unexpected manifest elements (including permissions/components): {tags}")
+    if link:
+        nodes = re.findall(r"E: uses-permission[^\n]*\n((?:\s*A: [^\n]*\n)+)", tree)
+        found = {}
+        for node in nodes:
+            name = re.search(r':name\([^)]*\)="([^"]+)"', node)
+            max_sdk = re.search(r':maxSdkVersion\([^)]*\)=([^\s]+)', node)
+            require(name is not None and name[1] not in found, "duplicate or invalid permission")
+            found[name[1]] = int(max_sdk[1], 0) if max_sdk else None
+        require(found == LINK_PERMISSIONS, f"unexpected Link permissions: {found}")
     for attr in ("allowBackup", "debuggable", "extractNativeLibs", "usesCleartextTraffic"):
         require(re.search(rf":{attr}\([^)]*\)=(?:false|\(type 0x12\)0x0)(?:\s|$)", tree),
                 f"manifest must explicitly set android:{attr}=false")
@@ -84,17 +103,25 @@ def inspect_manifest(aapt2, apk):
     require(re.search(r":exported\([^)]*\)=(?:true|\(type 0x12\)0xffffffff)(?:\s|$)", tree),
             "the launcher must be explicitly exported")
     badging = subprocess.check_output([aapt2, "dump", "badging", apk], text=True)
-    require(f"package: name='{APP}'" in badging, "unexpected application ID")
+    package = re.search(r"^package: name='([^']+)'", badging, re.M)
+    require(package and package[1] in PACKAGES, "unexpected application ID")
+    recovery = package[1] == RECOVERY_APP
+    installed_variant = re.search(r"versionName='([^']+)'", badging)
+    require(installed_variant and installed_variant[1].endswith("-link") == link, "wrong APK flavor")
+    recovery_suffix = "-recovery-link" if link else "-recovery"
+    require(installed_variant[1].endswith(recovery_suffix) == recovery, "wrong recovery version")
+    label = "FBA Arcade Recovery" if recovery else "FBA Arcade"
+    require(f"application-label:'{label}'" in badging, "unexpected launcher label")
     require(re.search(r"^(?:sdkVersion|minSdkVersion):'26'$", badging, re.M) and
             "targetSdkVersion:'37'" in badging, "unexpected effective SDK levels")
 
 
-def inspect_dex(dex):
+def inspect_dex(dex, link):
     require(dex.startswith(b"dex\n") and len(dex) >= 112, "invalid DEX header")
     string_count, strings, type_count, types = struct.unpack_from("<IIII", dex, 56)
     class_count, classes = struct.unpack_from("<II", dex, 96)
     require(strings + 4 * string_count <= len(dex) and types + 4 * type_count <= len(dex) and
-            0 < class_count <= 96 and classes + 32 * class_count <= len(dex), "invalid or unexpected DEX layout")
+            0 < class_count <= 512 and classes + 32 * class_count <= len(dex), "invalid or unexpected DEX layout")
     prefix = b"L" + APP.replace(".", "/").encode() + b"/"
     for i in range(class_count):
         class_idx, = struct.unpack_from("<I", dex, classes + 32 * i)
@@ -110,6 +137,12 @@ def inspect_dex(dex):
             if byte < 128:
                 break
         require(dex[offset:offset + len(prefix)] == prefix, "unexpected bundled Java class namespace")
+    network = set(re.findall(rb"Ljava/net/[A-Za-z0-9$/_]+;", dex))
+    require(network <= (LINK_JAVA_NETWORK if link else set()), f"unexpected Java networking APIs: {network}")
+    if link:
+        require(b"Ljava/net/Socket;" in network and prefix + b"LinkWire;" in dex, "missing local link implementation")
+    else:
+        require(b"Landroid/bluetooth/" not in dex and b"Ljava/net/" not in dex, "wireless code in offline APK")
     require(not any(marker.lower() in dex.lower() for marker in MARKERS), "network/install/tracker/dynamic DEX marker")
 
 
@@ -135,13 +168,18 @@ def inspect_png(data, name):
     require(False, f"missing PNG end: {name}")
 
 
-def main(aapt2, apk):
-    inspect_manifest(aapt2, apk)
+def main(aapt2, apk, link=False):
+    inspect_manifest(aapt2, apk, link)
     with ZipFile(apk) as z:
         require(z.testzip() is None, "archive CRC error")
         entries = set(z.namelist())
         require(len(entries) == len(z.infolist()), "duplicate archive entries")
         mandatory = {"AndroidManifest.xml", "classes.dex", "resources.arsc", "res/drawable/ic_search.xml"} | ASSETS | ART_PATHS
+        if link:
+            patch = "assets/FBNeo-LINK.patch"
+            mandatory.add(patch)
+            require(patch in entries and z.read(patch) == (CATALOG_DIR.parent.parent / "patches/fbneo-lockstep.patch").read_bytes(),
+                    "Link core patch differs from source")
         require(mandatory <= entries, f"missing files: {mandatory - entries}")
         libraries = {}
         for info in z.infolist():
@@ -149,6 +187,10 @@ def main(aapt2, apk):
             if name in ART_PATHS:
                 require(info.file_size <= 256 * 1024, f"overlong PNG: {name}")
                 inspect_png(z.read(info), name)
+            if name in CATALOG_ASSETS:
+                expected = CATALOG_DIR / name
+                require(info.file_size == expected.stat().st_size and z.read(info) == expected.read_bytes(),
+                        f"catalog bundle differs from source: {name}")
             if name in mandatory:
                 continue
             match = NATIVE.fullmatch(name)
@@ -157,13 +199,14 @@ def main(aapt2, apk):
             require(info.compress_type == ZIP_STORED, f"native library must be stored: {name}")
             inspect_elf(z.read(info), name, abi, lib)
             libraries.setdefault(abi, set()).add(lib)
-        require(libraries and all(libs == {"retro", "offlinefb"} for libs in libraries.values()), "incomplete native libraries")
-        inspect_dex(z.read("classes.dex"))
-    print("Offline APK checks passed: zero permissions, launcher only, approved payload, and 16 KiB ELF alignment.")
+        require(libraries and all(libs == {"retro", "offlinefb", "hqx"} for libs in libraries.values()), "incomplete native libraries")
+        inspect_dex(z.read("classes.dex"), link)
+    scope = "local link permission/API allowlist" if link else "zero permissions"
+    print(f"APK checks passed: {scope}, launcher only, approved payload, and 16 KiB ELF alignment.")
     print("Native ABIs: " + ", ".join(sorted(libraries)))
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        raise SystemExit("Usage: check_offline_apk.py AAPT2 FILE.apk")
-    main(*sys.argv[1:])
+    if len(sys.argv) not in (3, 4) or (len(sys.argv) == 4 and sys.argv[3] != "--link"):
+        raise SystemExit("Usage: check_offline_apk.py AAPT2 FILE.apk [--link]")
+    main(*sys.argv[1:3], link=len(sys.argv) == 4)

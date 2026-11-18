@@ -1,0 +1,4 @@
+# Generated TSV: terminal tabs delimit intentionally empty columns.
+android/src/main/assets/game-catalog.tsv text eol=lf whitespace=-blank-at-eol linguist-generated=true
+android/third_party/hqx/* -whitespace
+android/patches/*.patch whitespace=-space-before-tab

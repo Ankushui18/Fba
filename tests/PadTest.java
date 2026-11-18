@@ -25,7 +25,9 @@ public final class PadTest {
         expect(new PadLayout(0, 200, 2, true).video.w == 0, "zero-width measure is allowed");
         testPointers(new PadLayout(360, 760, 1, true));
         testPointers(new PadLayout(760, 360, 1, true));
-        System.out.println("Controller layout and multitouch tests passed.");
+        testCustom();
+        testPresets();
+        System.out.println("Controller layout, saved placements and multitouch tests passed.");
     }
 
     private static void checkLayout(int w, int h, float density) {
@@ -44,6 +46,7 @@ public final class PadTest {
         for (int i = 0; i < layout.controls.length; i++) {
             PadLayout.Box key = layout.controls[i];
             expect(key.x >= 0 && key.y >= 0 && key.right() <= w && key.bottom() <= h, "in-bounds touch target");
+            if (i >= COMBO && i <= PLAYER) { expect(key.w == 0 && key.h == 0, "optional control starts hidden"); continue; }
             expect(key.w > 0 && key.h > 0, "non-empty touch target");
             for (int j = 0; j < i; j++) expect(!overlap(key, layout.controls[j]), "touch targets do not overlap");
             if (i == DPAD || i == MENU) continue;
@@ -84,6 +87,57 @@ public final class PadTest {
         xs[0] = -10;
         expect(input.update(layout, 1, -1, ids, xs, ys) == 0, "don't latch D-pad after cancellation");
         expect(input.update(layout, 0, -1, ids, xs, ys) == 0, "all contacts released");
+    }
+
+    private static void testCustom() {
+        int w = 360, h = 760;
+        PadProfile profile = new PadProfile();
+        profile.x[FIRST_ACTION] = .63f;
+        profile.y[FIRST_ACTION] = .25f;
+        profile.scale[FIRST_ACTION] = 1.4f;
+        profile.hidden[FIRST_ACTION + 1] = true;
+        profile.x[COMBO] = .28f;
+        profile.y[COMBO] = .25f;
+        profile.opacity = 65;
+        profile.deadZone = 55;
+        profile.touchMargin = 20;
+        PadProfile saved = PadProfile.decode(profile.encode());
+        expect(saved.encode().equals(profile.encode()), "layout round trip");
+        expect(PadProfile.decode("bad").x[FIRST_ACTION] == -1, "bad preferences fall back to defaults");
+        PadLayout defaults = new PadLayout(w, h, 1, true);
+        PadLayout edited = new PadLayout(w, h, 1, true, saved, new int[] {A | B, 0, 0, 0}, true, false);
+        PadLayout.Box moved = edited.controls[FIRST_ACTION];
+        expect(Math.abs(centerX(moved) - w * .63f) <= 1 && Math.abs(centerY(moved) - h * .25f) <= 1, "normalized placement");
+        expect(moved.w == Math.round(defaults.controls[FIRST_ACTION].w * 1.4f), "individual button scale");
+        expect(edited.keyAt(moved.x - 1, centerY(moved)) == FIRST_ACTION, "expanded touch area follows a moved control");
+        expect(edited.video.contains(centerX(moved), centerY(moved)), "controls can move into the video area");
+        expect(edited.controls[FIRST_ACTION + 1].w == 0 && edited.controls[PLAYER].w > 0, "per-button visibility");
+        expect(edited.opacity == .65f && edited.deadZone == .55f, "opacity and dead zone");
+        PadInput input = new PadInput();
+        PadLayout.Box combo = edited.controls[COMBO];
+        expect(input.update(edited, 1, -1, new int[]{42}, new float[]{centerX(combo)}, new float[]{centerY(combo)}) == (A | B), "moved combo uses combined input");
+        saved.x[MENU] = 1; saved.y[MENU] = 1; saved.scale[MENU] = 1.85f; saved.hidden[MENU] = true;
+        PadLayout.Box pause = new PadLayout(w, h, 1, true, saved, null, false, false).controls[MENU];
+        expect(pause.h > 0 && pause.right() == w && pause.bottom() == h, "pause stays clickable and clamped at corners");
+        PadLayout preview = new PadLayout(w, h, 1, true, saved, null, true, true);
+        expect(preview.controls[FIRST_ACTION + 1].w > 0 && preview.controls[COMBO + 3].w > 0, "editor shows hidden and unused targets");
+    }
+
+    private static void testPresets() {
+        PadProfile profile = new PadProfile();
+        profile.x[FIRST_ACTION] = .25f;
+        profile.y[FIRST_ACTION] = .25f;
+        int mask = A | B | DIRECTIONS | Joypad.COIN | Joypad.START;
+        PadLayout auto = new PadLayout(360, 760, 1, true, profile, new int[]{A | X, X, 0, 0}, false, false, AUTO, mask, true);
+        expect(auto.video.h == 760 && auto.video.y == 0, "full-screen portrait uses overlay");
+        expect(auto.controls[FIRST_ACTION].w > 0 && auto.controls[FIRST_ACTION + 1].w > 0, "keep the two supported buttons");
+        expect(auto.controls[FIRST_ACTION + 2].w == 0 && auto.controls[FIRST_ACTION + 5].w == 0, "auto hides unmapped face buttons");
+        expect(auto.keyBits[COMBO] == A && auto.controls[COMBO + 1].w == 0, "auto omits unavailable combo bits");
+        expect(centerX(auto.controls[FIRST_ACTION]) > 180, "auto arrangement doesn't use manual position");
+        PadLayout compact = new PadLayout(360, 760, 1, true, profile, null, false, false, COMPACT, 0, false);
+        PadLayout custom = new PadLayout(360, 760, 1, true, profile, null, false, false);
+        expect(compact.controls[FIRST_ACTION].w < custom.controls[FIRST_ACTION].w && !compact.video.contains(
+                centerX(compact.controls[FIRST_ACTION]), centerY(compact.controls[FIRST_ACTION])), "compact preset fits the dock");
     }
 
     private static float centerX(PadLayout.Box box) { return box.x + box.w / 2f; }

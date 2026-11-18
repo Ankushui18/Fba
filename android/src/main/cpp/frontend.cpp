@@ -2,7 +2,9 @@
 #include <jni.h>
 #include <string.h>
 #include <algorithm>
+#include <new>
 #include "engine.h"
+#include "frame_filter.h"
 
 namespace {
 class UtfChars {
@@ -19,21 +21,21 @@ public:
 
 #define ENTRY(fn) Java_io_github_ankushui18_fbaoffline_Core_##fn
 
-extern "C" JNIEXPORT jstring JNICALL ENTRY(open)(JNIEnv *env, jclass, jstring rom, jstring system, jstring save) {
+extern "C" JNIEXPORT jstring JNICALL ENTRY(open)(JNIEnv *env, jclass, jstring rom, jstring system, jstring save, jboolean patched, jboolean linked) {
     const UtfChars romPath(env, rom);
     if (env->ExceptionCheck()) return nullptr;
     const UtfChars systemPath(env, system);
     if (env->ExceptionCheck()) return nullptr;
     const UtfChars savePath(env, save);
     if (env->ExceptionCheck()) return nullptr;
-    const char *error = arcade::open(romPath.value, systemPath.value, savePath.value);
+    const char *error = arcade::open(romPath.value, systemPath.value, savePath.value, patched, linked);
     return error ? env->NewStringUTF(error) : nullptr;
 }
 
-extern "C" JNIEXPORT void JNICALL ENTRY(close)(JNIEnv *, jclass) { arcade::close(); }
+extern "C" JNIEXPORT void JNICALL ENTRY(close)(JNIEnv *, jclass) { arcade::close(); arcade::clearFilter(); }
 
-extern "C" JNIEXPORT jint JNICALL ENTRY(step)(JNIEnv *env, jclass, jint input, jshortArray output) {
-    if (!arcade::step(static_cast<uint16_t>(input))) return -1;
+extern "C" JNIEXPORT jint JNICALL ENTRY(step)(JNIEnv *env, jclass, jlong input, jshortArray output) {
+    if (!arcade::step(static_cast<uint64_t>(input))) return -1;
     const auto audio = arcade::audio();
     const jsize len = std::min(static_cast<jsize>(audio.samples), env->GetArrayLength(output));
     if (len > 0) env->SetShortArrayRegion(output, 0, len, audio.pcm);
@@ -44,24 +46,121 @@ extern "C" JNIEXPORT jint JNICALL ENTRY(frameSize)(JNIEnv *, jclass) {
     const auto video = arcade::video();
     return (video.width << 16) | video.height;
 }
+extern "C" JNIEXPORT jlong JNICALL ENTRY(linkCheckpoint)(JNIEnv *, jclass) { return static_cast<jlong>(arcade::linkCheckpoint()); }
+extern "C" JNIEXPORT jint JNICALL ENTRY(inputMask)(JNIEnv *, jclass, jint port) { return arcade::inputMask(port); }
 extern "C" JNIEXPORT jint JNICALL ENTRY(rotation)(JNIEnv *, jclass) { return arcade::video().rotation; }
 extern "C" JNIEXPORT jfloat JNICALL ENTRY(aspect)(JNIEnv *, jclass) { return arcade::video().aspect; }
 extern "C" JNIEXPORT jdouble JNICALL ENTRY(fps)(JNIEnv *, jclass) { return arcade::fps(); }
 extern "C" JNIEXPORT jint JNICALL ENTRY(sampleRate)(JNIEnv *, jclass) { return arcade::sampleRate(); }
 
-extern "C" JNIEXPORT jboolean JNICALL ENTRY(copyFrame)(JNIEnv *env, jclass, jobject bitmap) {
+extern "C" JNIEXPORT jboolean JNICALL ENTRY(copyFrame)(JNIEnv *env, jclass, jobject bitmap, jint scale) {
     const auto video = arcade::video();
-    const unsigned width = video.width, height = video.height;
+    if (scale != 1 && !arcade::hqxFits(video.width, video.height, scale)) return JNI_FALSE;
+    const unsigned width = video.width * scale, height = video.height * scale;
     AndroidBitmapInfo info = {};
     if (!bitmap || AndroidBitmap_getInfo(env, bitmap, &info) != ANDROID_BITMAP_RESULT_SUCCESS ||
         info.format != ANDROID_BITMAP_FORMAT_RGBA_8888 || info.width != width || info.height != height ||
         !width || !height || info.stride < width * sizeof(uint32_t)) return JNI_FALSE;
     void *pixels = nullptr;
     if (AndroidBitmap_lockPixels(env, bitmap, &pixels) != ANDROID_BITMAP_RESULT_SUCCESS) return JNI_FALSE;
-    auto *row = static_cast<uint8_t *>(pixels);
-    for (unsigned y = 0; y < height; y++, row += info.stride) {
-        memcpy(row, video.rgba + width * y, width * sizeof(uint32_t));
+    bool okay = true;
+    if (scale == 1) {
+        auto *row = static_cast<uint8_t *>(pixels);
+        for (unsigned y = 0; y < height; y++, row += info.stride)
+            memcpy(row, video.rgba + width * y, width * sizeof(uint32_t));
+    } else {
+        try {
+            okay = arcade::scaleHqx(video.rgba, video.width, video.height, scale, static_cast<uint32_t *>(pixels), info.stride);
+        } catch (const std::bad_alloc &) { okay = false; }
     }
     AndroidBitmap_unlockPixels(env, bitmap);
-    return JNI_TRUE;
+    return okay;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL ENTRY(reset)(JNIEnv *, jclass) { return arcade::reset(); }
+
+extern "C" JNIEXPORT jbyteArray JNICALL ENTRY(captureState)(JNIEnv *env, jclass) {
+    const auto size = arcade::stateSize();
+    if (!size) return nullptr;
+    jbyteArray output = env->NewByteArray(static_cast<jsize>(size));
+    if (!output) return nullptr;
+    auto *data = env->GetByteArrayElements(output, nullptr);
+    if (!data) return nullptr;
+    const bool ok = arcade::saveState(data, size);
+    env->ReleaseByteArrayElements(output, data, ok ? 0 : JNI_ABORT);
+    return ok ? output : nullptr;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL ENTRY(restoreState)(JNIEnv *env, jclass, jbyteArray input) {
+    if (!input) return false;
+    const auto size = static_cast<size_t>(env->GetArrayLength(input));
+    if (!size || size != arcade::stateSize()) return false;
+    const auto *data = env->GetByteArrayElements(input, nullptr);
+    if (!data) return false;
+    const bool ok = arcade::loadState(data, size);
+    env->ReleaseByteArrayElements(input, const_cast<jbyte *>(data), JNI_ABORT);
+    return ok;
+}
+
+extern "C" JNIEXPORT jobjectArray JNICALL ENTRY(options)(JNIEnv *env, jclass) {
+    const auto &options = arcade::options();
+    jclass string = env->FindClass("java/lang/String");
+    if (!string) return nullptr;
+    jclass rowType = env->FindClass("[Ljava/lang/String;");
+    if (!rowType) return nullptr;
+    jmethodID constructor = env->GetMethodID(string, "<init>", "([BLjava/lang/String;)V");
+    if (!constructor) return nullptr;
+    jstring utf8 = env->NewStringUTF("UTF-8");
+    if (!utf8) return nullptr;
+    size_t visible = 0;
+    for (const auto &option : options) if (option.visible) visible++;
+    auto out = env->NewObjectArray(static_cast<jsize>(visible), rowType, nullptr);
+    if (!out) return nullptr;
+    jsize index = 0;
+    for (const auto &option : options) {
+        if (!option.visible) continue;
+        auto row = env->NewObjectArray(static_cast<jsize>(6 + option.choices.size()), string, nullptr);
+        if (!row) return nullptr;
+        // Core metadata is UTF-8, not JNI Modified UTF-8.
+        auto field = [&](jsize column, const std::string &value) {
+            if (env->ExceptionCheck()) return;
+            jbyteArray bytes = env->NewByteArray(static_cast<jsize>(value.size()));
+            if (!bytes) return;
+            env->SetByteArrayRegion(bytes, 0, static_cast<jsize>(value.size()), reinterpret_cast<const jbyte *>(value.data()));
+            if (!env->ExceptionCheck()) {
+                jobject text = env->NewObject(string, constructor, bytes, utf8);
+                if (text) env->SetObjectArrayElement(row, column, text);
+                env->DeleteLocalRef(text);
+            }
+            env->DeleteLocalRef(bytes);
+        };
+        // Keys are ASCII or UTF-8 (legacy translations). Java returns the original key for selection.
+        field(0, option.key);
+        field(1, option.category);
+        field(2, option.title);
+        field(3, option.info);
+        field(4, std::to_string(option.selected));
+        field(5, std::to_string(option.defaultChoice));
+        for (size_t j = 0; j < option.choices.size(); j++) field(static_cast<jsize>(6 + j), option.choices[j].label);
+        if (env->ExceptionCheck()) return nullptr;
+        env->SetObjectArrayElement(out, index++, row);
+        env->DeleteLocalRef(row);
+    }
+    return out;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL ENTRY(setOption)(JNIEnv *env, jclass, jstring key, jint choice) {
+    if (!key) return false;
+    // Use standard UTF-8 to match the core even for supplementary characters.
+    jclass string = env->GetObjectClass(key);
+    if (!string) return false;
+    jmethodID getBytes = env->GetMethodID(string, "getBytes", "(Ljava/lang/String;)[B");
+    if (!getBytes) return false;
+    jstring utf8 = env->NewStringUTF("UTF-8");
+    if (!utf8) return false;
+    auto bytes = static_cast<jbyteArray>(env->CallObjectMethod(key, getBytes, utf8));
+    if (!bytes || env->ExceptionCheck() || env->GetArrayLength(bytes) > 512) return false;
+    char name[513] = {};
+    env->GetByteArrayRegion(bytes, 0, env->GetArrayLength(bytes), reinterpret_cast<jbyte *>(name));
+    return !env->ExceptionCheck() && arcade::setOption(name, choice);
 }

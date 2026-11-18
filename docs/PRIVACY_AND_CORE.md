@@ -1,4 +1,4 @@
-# Legacy APK comparison and offline build audit
+# Legacy APK comparison and FBA Arcade audit
 
 ## What the original contains
 
@@ -17,7 +17,7 @@
 - `assets/n.dat` and `assets/p.dat` in the old APK are ZIP containers with
   firmware/ROM data. Neither these assets nor the old DEX, native libraries,
   SDKs, signing files, HTML, or compiled resource XML enter the new build.
-  v0.2.0 reuses only vetted static artwork from the original.
+  FBA Arcade reuses selected static artwork and data, not legacy code.
 
 ## What matches upstream
 
@@ -39,12 +39,16 @@ For a second comparison, 3,361 of 4,900 legacy `drvrom.xml` set names (68.59%)
 also appear in the Libretro port's current arcade DAT (8,556 entries). Identical
 names do not guarantee the same ROM CRCs, parent/BIOS needs, or playability.
 
-The new APK compiles **FBNeo 1.0.0.03** from the upstream-linked Libretro port at
+The regular APK compiles **FBNeo 1.0.0.03** unchanged from the upstream-linked Libretro port at
 [`2da48555`](https://github.com/libretro/FBNeo/tree/2da48555c13ce5d011edf2d6ec829b7393c070af)
 (2026-11-18). It links a new JNI bridge and Android frontend. No compiled
 code or emulator frontend source from the old APK is used. The main project
 and the Libretro port are pinned separately: the former is the comparison
-reference, the latter has the Android build and libretro frontend ABI.
+reference, the latter has the Android build and libretro frontend ABI. The
+optional Link APK applies a separate [four-line core patch](../android/patches/fbneo-lockstep.patch)
+so the existing deterministic netplay time and random seed take effect at
+initialization, not only when serializing a state. The patch and core licenses
+are in the Link APK.
 Reproduce the comparison:
 
 ```sh
@@ -52,49 +56,114 @@ Reproduce the comparison:
 python3 tools/compare_legacy.py fba4droid_18644.apk /path/to/FBNeo /path/to/FBNeo-libretro
 ```
 
-## Artwork in v0.2.0
+## What FBA Arcade reuses
 
-The redesigned app reuses 152 original images: 76 images from the complete
-`skin_default` and `skin_1` sets, and 76 from app-specific drawable and mipmap
-resources. The displayed controllers use the original normal and pressed
-frames, not generic shapes. The new UI code handles layout, button mapping,
-input and settings; recent filenames and settings stay in app-private data.
-There is no legacy game icon archive, updater UI, QR link, WebView, or netplay
-code. `tools/import_legacy_art.py` records each image's source path, verifies
-the legacy APK hash, and writes only the decoded RGBA pixels to PNG. The APK
-checker requires the explicitly listed filenames and validates the PNG headers
-and chunks. The two v0.2.0 native libraries match those of the published
-v0.1.0 APK byte for byte.
-
-## New build checks and remaining work
-
-- The signed ARM64 test APK passes APK v2/v3 signature verification, zero
-  manifest permissions/only launcher, archive allowlist and CRC, legacy tracker
-  marker checks, native dependency/import checks, **16 KiB alignment** for
-  both in-APK library offsets and native ELF segments, non-executable stacks,
-  and no writable executable ELF segments. These checks are enforced by
-  `tools/verify-apk.sh` / `tools/check_offline_apk.py`; no AV verdict is claimed.
-- The shell build uses tools available inside a network-restricted sandbox:
-  Android SDK 37.0/Build Tools 36.1.0 from pinned
-  [`whynusn/android-sdk-bundle@3dd1d84`](https://github.com/whynusn/android-sdk-bundle/tree/3dd1d84b2a76870a5995107613af83f6114450ae)
-  (bundle checksums verified), Temurin 17.0.20.1 (digest matches the upstream
-  Temurin release), and NDK 23.0.7599858 from the pinned
-  [Chromium mirror](https://github.com/chromium-full-mirror/android_ndk/tree/310956bd122ec2b96049f8d7398de6b717f3452e).
-  The linker is explicitly configured for 16 KiB. Rebuild with official SDK
-  packages and a current NDK and release key before public distribution.
-- Host tests cover ZIP import and rejection, layout across screen sizes,
-  simultaneous directional and action inputs, and the native frontend with
-  a mock libretro core. The pinned core also passed repeated unknown-set and
-  missing-ROM load checks in its Linux build (`tools/smoke-core.sh`). No
-  physical Android device is connected. On a device, test the in-place update,
-  both skins and pressed states, rotate during play, pause/resume, and check
-  touch and gamepad input with a known-good ROM. Repeat on a 16 KiB device.
-
-| Signed ARM64 test build | APK SHA-256 |
+| Legacy asset | Use in the new frontend |
 |---|---|
-| v0.2.0 (versionCode 2) | `2e6b5d7ff292602e3574d0cdc5220cdfe8ef87be0f847243c89b1f90c4b5aa06` |
+| `skin_default`, `skin_1`, selected drawables | 152 static PNGs, including the original round joystick bases and knobs, directional and button pressed frames, and launcher/menu images. The drag editor and runtime use the same normalized layout. |
+| `gameicon.zip` | 3,847 bounded RGBA thumbnails. The original ICO decoder is not bundled. Look up the exact set first, then parent art or a fallback icon. A user-picked image or a captured frame can override the thumbnail. |
+| `drvrom.xml`, `listcn.txt` | Board, grouped categories and Chinese titles. Joined locally to the pinned arcade DAT for English titles, ROM dependencies and year/manufacturer. The 10,095 rows are metadata, not a supported-games count. |
+| Pinned FBNeo arcade DAT | Indexed names, sizes and CRCs for the chips of 8,545 sets, used to select an IPS target. No chip data is stored. |
+| `cheat_en.zip`, `cheat.zip` | Sanitized, exact-set definitions for 3,131 arcade sets, with English preferred and Chinese fallback. Unsupported groups, includes and non-byte-triple rules are excluded; all remaining groups start off. |
+
+`tools/import_legacy_art.py` records each PNG's source path and validates the
+APK hash. `tools/prepare_game_catalog.py` pins both the original APK and the
+FBNeo arcade DAT by SHA-256. It only exports bounded PNGs, TSV metadata and a
+constrained native cheat grammar. For regeneration, install Pillow 13.0.0 in
+a Python virtual environment and run:
+
+```sh
+python tools/import_legacy_art.py
+python tools/prepare_game_catalog.py /path/to/pinned/FBNeo-libretro
+python tools/prepare_rom_targets.py /path/to/pinned/FBNeo-libretro
+```
+
+Only the current game's INI is staged in private `system/fbneo/cheats` while
+it runs. This file needs to stay there because FBNeo rereads it when options
+change or the game is reset. It is removed on close; stale staging files are
+cleared at the next launch. A clone doesn't inherit a parent's cheat writes.
+The emulation thread owns the libretro calls, including the V2 core option
+updates, state serialization and reset. Tests verify a memory write with the
+real core; they don't validate every original cheat against every compatible
+ROM revision. Turning a cheat off stops the rule; it doesn't necessarily undo
+memory changes that already happened.
+
+## Feature parity and intentional gaps
+
+The supplied help and UI identify IPS trees and previews, local cheats,
+States, HQx/XBRZ, controller auto/fixed modes, extra touch area, frameskip
+0–4/auto, and host/join menus for Wi-Fi and Bluetooth. The help is labeled
+v1.72, whereas the APK is v1.77; resource strings alone don't prove any
+particular driver, patch format, or protocol works on a current phone.
+
+| Feature | FBA Arcade 0.4.0 |
+|---|---|
+| Library, arcade and controls | Local import, art, list/grid, search/favorites/recent, metadata and title sorting, category/board filters, round or D-pad controls, portrait/landscape drag/size/visibility, auto/fixed presets, opacity/expanded hit zone, local controllers, combinations and turbo. |
+| States and snapshots | In-game save/load, library previews/rename/delete/launch. Checked current-core states bound to the primary ZIP hash, payload size/CRC and IPS variant if used. Keep parent and BIOS revisions unchanged too. |
+| IPS | Same-size standard IPS literal/RLE changes for one chip selected by size and CRC. Byte and work limits; generated one-chip override in the session cache, not a change to the original ZIP. No old multi-chip `.dat` package import or resize/IPS32. Patched saves/screenshots and battery storage are isolated. |
+| Custom cheats | Exact-set ZIP/member, INI, or pasted text. Parse and reconstruct only bounded, sequential options with CPU/address/byte triples, off by default. No includes or arbitrary raw directives sent to the core. Imported data is bound to the primary ZIP SHA-256. |
+| Display | GPU canvas selection, fullscreen portrait, render-only frameskip (0–4/auto), and genuine HQ2x/HQ3x/HQ4x. The source is [separate LGPL HQx](../android/third_party/hqx/README.md) with a bounded color cache. No xBRZ code is bundled; the xBRZ sources reviewed offered no corresponding exception for FBNeo's non-commercial license. |
+| Wi-Fi/Bluetooth | Optional [Link beta](LINK_PLAY.md) for two phones with the same APK and matching archives. Outputs are checked for desync; no foreign native state is loaded. Linux loopback and two-core checks passed; Android transport acceptance pending. Not compatible with legacy FBA4droid peers. |
+| Legacy `.fba`/Alpha states | The old help describes E680 caches for PGM/NeoGeo/CPS2; the old ELF has `FS1 ` and BurnState symbols. Supplied archives did not contain usable samples to prove exact format and core compatibility. Not accepted or converted by extension. |
+
+Digital mapping does not emulate analog trackballs or lightguns. FBNeo board
+and ROM compatibility is not the same as the two older Alpha cores. Old ads,
+telemetry, browser, updater and dynamic loading were not restored.
+
+The regular APK has no Android permissions or Bluetooth/network transport.
+The Link APK permits only `INTERNET`, `ACCESS_LOCAL_NETWORK`, legacy
+`BLUETOOTH` through API 30, and `BLUETOOTH_CONNECT`. Link binds a selected
+private IPv4 address and checks the peer subnet, or opens an authenticated
+RFCOMM socket to a bonded peer; the room code authenticates the input exchange.
+There is no DNS, cloud service, discovery, SDK tracker or background listener.
+The host and guest exchange set fingerprints and control data, not ROM/state
+files. The frontend has no arbitrary host-side code execution or install path.
+
+## Verification and installation
+
+- Both ARM64 APKs pass v2/v3 signature, launcher-only manifest, payload/CRC,
+  native dependencies/imports, non-executable stack and **16 KiB APK and ELF
+  alignment** checks. The verifier enforces zero permissions for the regular
+  APK and a fixed manifest and networking API allowlist for the Link APK.
+  The catalog and Link patch bytes are checked against source. These checks
+  are not an antivirus verdict or a runtime network observation.
+- The shell build uses Android SDK 37.0/Build Tools 36.1.0 from pinned
+  [`whynusn/android-sdk-bundle@3dd1d84`](https://github.com/whynusn/android-sdk-bundle/tree/3dd1d84b2a76870a5995107613af83f6114450ae)
+  (bundle checksums verified), Temurin 17.0.20.1 and NDK 23.0.7599858 from the
+  pinned [Chromium mirror](https://github.com/chromium-full-mirror/android_ndk/tree/310956bd122ec2b96049f8d7398de6b717f3452e).
+  The linker is explicitly configured for 16 KiB. Use official tools and a
+  current NDK before public distribution.
+- `tools/test.sh` checks imports, custom/auto/compact layouts, multitouch,
+  private state validation, IPS, INI validation, HQx, the local link protocol
+  and payload indexes. `tools/smoke-core.sh` runs a synthetic board program
+  on the unchanged pinned Linux core: video, PCM, both player inputs, DIP,
+  imported cheat writes, state restore/reset, and actual changed video from an
+  IPS variant followed by an unchanged regular launch. `tools/smoke-link.sh`
+  drives two Link cores via the same wire protocol and verifies synchronized
+  gameplay, pause and mismatch rejection. No physical Android devices were
+  available; see the [device checklist](ANDROID_SMOKE.md).
+
+| Original signed ARM64 test build | APK SHA-256 |
+|---|---|
+| FBA Arcade v0.4.0 Offline (versionCode 4) | `95043e0b7fa1db5b9f0ac606e13555cd39cfc81079b4dcb6f64b74e456934e9c` |
+| FBA Arcade v0.4.0 Link beta (versionCode 4) | `27d33e5bf8ced4657acb3cf29d3824e8cd02bc3b14e82f205f538001b316c1fe` |
+| FBA Arcade v0.3.0 (versionCode 3) | `ce39792bfad79f0a6ca8f1577a54c3daa0d4bd0b4f475cf0d9ac34d2983eb560` |
+| Published v0.2.0 (versionCode 2) | `2e6b5d7ff292602e3574d0cdc5220cdfe8ef87be0f847243c89b1f90c4b5aa06` |
 | Published v0.1.0 (versionCode 1) | `8d13b5ff5b563da0bf0af7415cb9520914622470fd978f3652ef45b02f16c930` |
 
-Both have test certificate SHA-256
-`ce12cfdadf51d70c95bb24825b58d1af017acf8d23618ee74aaf781aa0d37cd9`
-and the same application ID. They do not have the legacy app's signing key.
+The original v0.4.0 test build is `io.github.ankushui18.fbaarcade.test`, with
+certificate SHA-256
+`bd3ea132c39a00e884b83456f2f692e76bc73172015930af2be3f9462d016558`.
+The two previous builds share `io.github.ankushui18.fbaoffline` and the
+certificate SHA-256
+`ce12cfdadf51d70c95bb24825b58d1af017acf8d23618ee74aaf781aa0d37cd9`.
+The older signing key was unavailable when v0.3.0 was made. The 0.4.0 APKs
+share the v0.3.0 test ID and signer, so install one **over that test build**
+without uninstalling. They replace one another; both can coexist with the
+original and v0.1/0.2 installs and do not access those apps' private data.
+
+The restored source no longer has the original APKs or their signing key.
+Recovery builds use `io.github.ankushui18.fbaarcade.recovery` and a new test
+certificate. They are separate installs from the originals and do not
+migrate or read the older app's private library or saves. The two Recovery
+flavors share their own ID and signer, so they replace each other.

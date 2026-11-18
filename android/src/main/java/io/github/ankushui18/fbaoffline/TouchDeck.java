@@ -8,6 +8,7 @@ import android.graphics.drawable.StateListDrawable;
 import android.os.SystemClock;
 import android.view.Gravity;
 import android.view.MotionEvent;
+import android.view.HapticFeedbackConstants;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageButton;
@@ -19,25 +20,26 @@ import static io.github.ankushui18.fbaoffline.PadLayout.*;
 
 /** Routes all touch contacts against the same geometry that draws the legacy skins. */
 final class TouchDeck extends ViewGroup {
-    private static final String[] LABELS = {"", "A", "B", "C", "D", "E", "F", "Coin", "Start"};
+
     private static final String[] ARROWS = {"Up", "Down", "Left", "Right"};
     private static final int[] ARROW_BITS = {Joypad.UP, Joypad.DOWN, Joypad.LEFT, Joypad.RIGHT};
     private static final int TAP_MS = 48;
     private final ArcadeUi ui;
     private final PadInput pointers = new PadInput();
-    private final ImageButton[] buttons = new ImageButton[MENU];
+    private final ImageButton[] buttons = new ImageButton[KEY_END];
     private final View[] arrowTargets = new View[4];
     private final TextView[] captions = new TextView[2];
     private final Dpad dpad;
-    private final long[] downAt = new long[MENU];
-    private final Runnable[] release = new Runnable[MENU + ARROW_BITS.length];
+    private final long[] downAt = new long[KEY_END];
+    private final Runnable[] release = new Runnable[KEY_END + ARROW_BITS.length];
     private int[] ids = new int[8];
     private float[] xs = new float[8], ys = new float[8];
     private PadLayout layout;
     private PadSkin skin;
     private GameSession session;
     private boolean interactive, tracking;
-    private int held, pulsing;
+    private int held;
+    private final int[] pulse = new int[KEY_END + ARROW_BITS.length];
 
     TouchDeck(Context context, PadSkin initialSkin) {
         super(context);
@@ -46,22 +48,24 @@ final class TouchDeck extends ViewGroup {
         dpad = new Dpad(context);
         addView(dpad);
         dpad.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
-        for (int i = FIRST_ACTION; i < MENU; i++) {
+        for (int i = FIRST_ACTION; i < KEY_END; i++) {
             final int key = i;
             ImageButton button = new ImageButton(context);
             button.setBackground(null);
             button.setScaleType(ImageView.ScaleType.FIT_CENTER);
             button.setPadding(0, 0, 0, 0);
-            button.setContentDescription(LABELS[i]);
+            button.setContentDescription(NAMES[i]);
             button.setFocusable(true);
             button.setSoundEffectsEnabled(false);
-            button.setOnClickListener(v -> tap(key, PadInput.KEY_BITS[key]));
+            button.setOnClickListener(v -> {
+                if (layout != null) tap(key, layout.keyBits[key]);
+            });
             buttons[i] = button;
             addView(button);
-            release[i] = () -> endTap(PadInput.KEY_BITS[key]);
+            release[key] = () -> endTap(key);
         }
         for (int i = 0; i < ARROW_BITS.length; i++) {
-            int bit = ARROW_BITS[i], key = MENU + i;
+            int bit = ARROW_BITS[i], key = KEY_END + i;
             ImageButton target = new ImageButton(context);
             target.setBackground(null);
             target.setContentDescription(ARROWS[i]);
@@ -70,10 +74,10 @@ final class TouchDeck extends ViewGroup {
             target.setOnClickListener(v -> tap(key, bit));
             addView(target);
             arrowTargets[i] = target;
-            release[key] = () -> endTap(bit);
+            release[key] = () -> endTap(key);
         }
         for (int i = 0; i < captions.length; i++) {
-            TextView caption = ui.eyebrow(LABELS[COIN + i].toUpperCase(java.util.Locale.ROOT), Color.WHITE);
+            TextView caption = ui.eyebrow(NAMES[COIN + i].toUpperCase(java.util.Locale.ROOT), Color.WHITE);
             caption.setTextSize(10);
             caption.setGravity(Gravity.CENTER);
             caption.setSingleLine();
@@ -92,22 +96,36 @@ final class TouchDeck extends ViewGroup {
         if (layout != next) {
             clear();
             layout = next;
-            float alpha = next.overlay ? .84f : 1f;
+            float alpha = next.opacity;
             dpad.setAlpha(alpha);
-            for (int i = FIRST_ACTION; i < MENU; i++) buttons[i].setAlpha(alpha);
+            for (int i = FIRST_ACTION; i < KEY_END; i++) {
+                buttons[i].setAlpha(alpha);
+                buttons[i].setVisibility(next.controls[i].w > 0 && next.controls[i].h > 0 ? VISIBLE : INVISIBLE);
+            }
+            for (View arrow : arrowTargets) arrow.setVisibility(next.controls[DPAD].w > 0 ? VISIBLE : INVISIBLE);
+            for (TextView label : captions) label.setAlpha(alpha);
         }
+    }
+
+    private boolean animated = true, haptic;
+
+    void setFeedback(boolean animated, boolean haptic) {
+        this.animated = animated;
+        this.haptic = haptic;
+        publish();
     }
 
     void setSkin(PadSkin next) {
         if (next == skin) return;
         clear();
         skin = next;
-        dpad.setArt(next.directions);
-        for (int i = FIRST_ACTION; i < MENU; i++) {
-            int[] frames = next.buttons[i - FIRST_ACTION];
-            buttons[i].setImageDrawable(buttonArt(getContext(), frames[0], frames[1]));
+        dpad.setArt(next);
+        for (int i = FIRST_ACTION; i < KEY_END; i++) {
+            int normal = i < COMBO ? next.buttons[i - FIRST_ACTION][0] : next.combos[i - COMBO];
+            int pressed = i < COMBO ? next.buttons[i - FIRST_ACTION][1] : next.combosPressed[i - COMBO];
+            buttons[i].setImageDrawable(buttonArt(getContext(), normal, pressed));
         }
-        for (TextView caption : captions) caption.setVisibility(skin == PadSkin.CLASSIC ? VISIBLE : GONE);
+        for (TextView caption : captions) caption.setVisibility(skin.classic ? VISIBLE : GONE);
         requestLayout();
     }
 
@@ -125,7 +143,8 @@ final class TouchDeck extends ViewGroup {
     }
 
     void clear() {
-        held = pulsing = 0;
+        held = 0;
+        java.util.Arrays.fill(pulse, 0);
         tracking = false;
         pointers.clear();
         for (Runnable callback : release) if (callback != null) removeCallbacks(callback);
@@ -133,24 +152,33 @@ final class TouchDeck extends ViewGroup {
     }
 
     private void tap(int key, int bit) {
-        if (!interactive) return;
-        if ((bit & DIRECTIONS) != 0) pulsing &= ~DIRECTIONS;
-        pulsing |= bit;
+        if (!interactive || bit == 0) return;
+        if ((bit & DIRECTIONS) != 0) java.util.Arrays.fill(pulse, KEY_END, pulse.length, 0);
+        pulse[key] = bit;
         removeCallbacks(release[key]);
         postDelayed(release[key], TAP_MS);
         publish();
     }
 
-    private void endTap(int bit) {
-        pulsing &= ~bit;
+    private void endTap(int key) {
+        pulse[key] = 0;
         publish();
     }
 
     private void publish() {
+        int pulsing = 0;
+        for (int key : pulse) pulsing |= key;
         int mask = held | (pulsing & ((held & DIRECTIONS) == 0 ? -1 : ~DIRECTIONS));
         if (session != null) session.touch.set(mask);
-        for (int i = FIRST_ACTION; i < MENU; i++) buttons[i].setPressed((mask & PadInput.KEY_BITS[i]) != 0);
-        dpad.showDirections(mask & DIRECTIONS);
+        for (int i = FIRST_ACTION; i < KEY_END; i++) {
+            int bit = layout == null ? 0 : layout.keyBits[i];
+            buttons[i].setPressed(animated && bit != 0 && (mask & bit) == bit);
+        }
+        updateStickArt(mask);
+    }
+
+    private void updateStickArt(int mask) {
+        dpad.showDirections(animated ? mask & DIRECTIONS : 0, animated ? pointers.thumbX : 0, animated ? pointers.thumbY : 0);
     }
 
     @Override public boolean onInterceptTouchEvent(MotionEvent event) { return interactive; }
@@ -177,16 +205,18 @@ final class TouchDeck extends ViewGroup {
         int next = pointers.update(layout, count, lifted, ids, xs, ys);
         int changed = next ^ held;
         if (changed != 0) {
+            if (haptic && (next & ~held) != 0) performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
             held = next;
             long now = SystemClock.uptimeMillis();
-            for (int i = FIRST_ACTION; i < MENU; i++) {
-                int bit = PadInput.KEY_BITS[i];
+            for (int i = FIRST_ACTION; i < COMBO; i++) {
+                int bit = layout.keyBits[i];
                 if ((changed & bit) == 0) continue;
                 if ((held & bit) != 0) downAt[i] = now;
                 else if (lifted >= 0 && now - downAt[i] < TAP_MS) tap(i, bit);
             }
             publish();
         }
+        updateStickArt(held);
         if (action == MotionEvent.ACTION_UP) tracking = false;
         return true;
     }
@@ -202,11 +232,11 @@ final class TouchDeck extends ViewGroup {
         Box pad = layout.controls[DPAD];
         measureExactly(dpad, pad.w, pad.h);
         for (View arrow : arrowTargets) measureExactly(arrow, pad.w / 3, pad.h / 3);
-        for (int i = FIRST_ACTION; i < MENU; i++) {
+        for (int i = FIRST_ACTION; i < KEY_END; i++) {
             Box box = layout.controls[i];
-            int captionHeight = captionHeight(box);
+            int captionHeight = captionHeight(i, box);
             measureExactly(buttons[i], box.w, box.h - captionHeight);
-            if (i >= COIN) measureExactly(captions[i - COIN], box.w, captionHeight);
+            if (i == COIN || i == START) measureExactly(captions[i - COIN], box.w, captionHeight);
         }
     }
 
@@ -219,15 +249,15 @@ final class TouchDeck extends ViewGroup {
         position(arrowTargets[1], pad.x + square, pad.bottom() - square);
         position(arrowTargets[2], pad.x, pad.y + square);
         position(arrowTargets[3], pad.right() - square, pad.y + square);
-        for (int i = FIRST_ACTION; i < MENU; i++) {
+        for (int i = FIRST_ACTION; i < KEY_END; i++) {
             Box box = layout.controls[i];
             position(buttons[i], box.x, box.y);
-            if (i >= COIN) position(captions[i - COIN], box.x, box.bottom() - captionHeight(box));
+            if (i == COIN || i == START) position(captions[i - COIN], box.x, box.bottom() - captionHeight(i, box));
         }
     }
 
-    private int captionHeight(Box box) {
-        return skin == PadSkin.CLASSIC && box.w > box.h ? Math.min(ui.dp(13), box.h / 3) : 0;
+    private int captionHeight(int key, Box box) {
+        return skin.classic && (key == COIN || key == START) && box.w > box.h ? Math.min(ui.dp(13), box.h / 3) : 0;
     }
 
     static void measureExactly(View view, int w, int h) {
@@ -241,21 +271,36 @@ final class TouchDeck extends ViewGroup {
     private static final class Dpad extends View {
         private final Drawable[] art = new Drawable[5];
         private int direction;
+        private float thumbX, thumbY;
+        private Drawable ring, knob;
 
         Dpad(Context context) { super(context); }
 
-        void setArt(int[] resources) {
-            for (int i = 0; i < resources.length; i++) art[i] = getContext().getDrawable(resources[i]);
+        void setArt(PadSkin skin) {
+            for (int i = 0; i < skin.directions.length; i++) art[i] = getContext().getDrawable(skin.directions[i]);
+            ring = skin.circle == 0 ? null : getContext().getDrawable(skin.circle);
+            knob = skin.knob == 0 ? null : getContext().getDrawable(skin.knob);
             invalidate();
         }
 
-        void showDirections(int next) {
-            if (next == direction) return;
+        void showDirections(int next, float x, float y) {
+            if (next == direction && (ring == null || (x == thumbX && y == thumbY))) return;
             direction = next;
+            thumbX = x; thumbY = y;
             invalidate();
         }
 
         @Override protected void onDraw(Canvas canvas) {
+            if (ring != null) {
+                paint(canvas, ring);
+                float unit = Math.max(1f, (float) Math.hypot(thumbX, thumbY));
+                int half = Math.round(getWidth() * .21f);
+                int x = Math.round(getWidth() * (.5f + .28f * thumbX / unit));
+                int y = Math.round(getHeight() * (.5f + .28f * thumbY / unit));
+                knob.setBounds(x - half, y - half, x + half, y + half);
+                knob.draw(canvas);
+                return;
+            }
             if (direction == 0) { paint(canvas, art[0]); return; }
             for (int i = 0; i < ARROW_BITS.length; i++) {
                 if (direction == ARROW_BITS[i]) { paint(canvas, art[i + 1]); return; }

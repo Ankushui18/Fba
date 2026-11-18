@@ -18,7 +18,63 @@ unsigned width, height, rotation;
 float displayAspect;
 double coreFps, coreSampleRate;
 retro_pixel_format pixelFormat;
-uint16_t buttons;
+uint64_t buttons;
+constexpr size_t kMaxState = 48u * 1024 * 1024;
+std::vector<arcade::Option> coreOptions;
+bool optionsDirty, usePatchedRom, localLink;
+unsigned inputMasks[4];
+
+arcade::Option *findOption(const char *key) {
+    if (!key) return nullptr;
+    for (auto &option : coreOptions) if (option.key == key) return &option;
+    return nullptr;
+}
+
+bool selectOption(arcade::Option &option, unsigned choice) {
+    if (choice >= option.choices.size()) return false;
+    if (option.selected != choice) optionsDirty = true;
+    option.selected = choice;
+    option.overridden = true;
+    return true;
+}
+
+void captureOptions(const retro_core_options_v2 &published) {
+    if (!published.definitions) return;
+    std::vector<arcade::Option> next;
+    for (const auto *entry = published.definitions; entry->key && next.size() < 1024; ++entry) {
+        const char *category = entry->category_key ? entry->category_key : "";
+        const bool visual = !strcmp(entry->key, "fbneo-vertical-mode") || !strcmp(entry->key, "fbneo-diagnostic-input");
+        if (!visual && strcmp(category, "dipswitch") && strcmp(category, "cheat")) continue;
+        arcade::Option option = {};
+        option.key = entry->key;
+        option.category = visual ? "machine" : category;
+        option.title = entry->desc_categorized ? entry->desc_categorized : entry->desc ? entry->desc : entry->key;
+        if (entry->info) option.info = entry->info;
+        option.visible = true;
+        for (size_t j = 0; j < RETRO_NUM_CORE_OPTION_VALUES_MAX && entry->values[j].value; j++) {
+            const auto &value = entry->values[j];
+            if (entry->default_value && !strcmp(entry->default_value, value.value)) option.defaultChoice = j;
+            option.choices.push_back({value.value, value.label ? value.label : value.value});
+        }
+        if (option.choices.empty()) continue;
+        option.selected = option.defaultChoice;
+        if (const auto *previous = findOption(entry->key)) {
+            option.visible = previous->visible;
+            if (previous->overridden) {
+                const auto &chosen = previous->choices[previous->selected].value;
+                for (unsigned j = 0; j < option.choices.size(); j++) {
+                    if (option.choices[j].value == chosen) {
+                        option.selected = j;
+                        option.overridden = true;
+                        break;
+                    }
+                }
+            }
+        }
+        next.push_back(std::move(option));
+    }
+    coreOptions.swap(next);
+}
 uint32_t frame[kMaxSide * kMaxSide];
 int16_t audio[kAudioSamples];
 size_t audioSize;
@@ -55,6 +111,11 @@ bool environment(unsigned cmd, void *data) {
         return true;
     }
     if (cmd == RETRO_ENVIRONMENT_GET_INPUT_BITMASKS) return true;
+    if (cmd == RETRO_ENVIRONMENT_GET_SAVESTATE_CONTEXT) {
+        if (data) *static_cast<retro_savestate_context *>(data) = localLink
+            ? RETRO_SAVESTATE_CONTEXT_ROLLBACK_NETPLAY : RETRO_SAVESTATE_CONTEXT_NORMAL;
+        return true; // The pinned core probes support with NULL.
+    }
     if (!data) return false;
     switch (cmd) {
         case RETRO_ENVIRONMENT_GET_CAN_DUPE:
@@ -69,11 +130,48 @@ bool environment(unsigned cmd, void *data) {
         case RETRO_ENVIRONMENT_GET_LOG_INTERFACE:
             static_cast<retro_log_callback *>(data)->log = logCore;
             return true;
-        case RETRO_ENVIRONMENT_GET_VARIABLE:
-            static_cast<retro_variable *>(data)->value = nullptr;
-            return false;   // Use the core's own defaults; no netplay, patches or external options.
+        case RETRO_ENVIRONMENT_GET_CORE_OPTIONS_VERSION:
+            *static_cast<unsigned *>(data) = 2u;
+            return true;
+        case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2:
+            captureOptions(*static_cast<const retro_core_options_v2 *>(data));
+            return true;
+        case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY: {
+            const auto *display = static_cast<const retro_core_option_display *>(data);
+            if (auto *option = findOption(display->key)) option->visible = display->visible;
+            return true;
+        }
+        case RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS: {
+            memset(inputMasks, 0, sizeof(inputMasks));
+            for (const auto *desc = static_cast<const retro_input_descriptor *>(data); desc->description; ++desc) {
+                if (desc->port < 4 && desc->index == 0 && desc->device == RETRO_DEVICE_JOYPAD && desc->id < 16)
+                    inputMasks[desc->port] |= 1u << desc->id;
+            }
+            return true;
+        }
+        case RETRO_ENVIRONMENT_GET_VARIABLE: {
+            auto *var = static_cast<retro_variable *>(data);
+            if (var->key && !strcmp(var->key, "fbneo-allow-patched-romsets")) {
+                var->value = usePatchedRom ? "enabled" : "disabled";
+                return true;
+            }
+            const auto *option = findOption(var->key);
+            var->value = option && option->overridden ? option->choices[option->selected].value.c_str() : nullptr;
+            return var->value != nullptr;
+        }
+        case RETRO_ENVIRONMENT_SET_VARIABLE: {
+            const auto *var = static_cast<const retro_variable *>(data);
+            auto *option = findOption(var->key);
+            // FBNeo uses this to restore safe values at boot or cabinet reset.
+            if (!var->value) return false;
+            if (!option) return true; // Ignore frontend-unsupported core features.
+            for (unsigned i = 0; i < option->choices.size(); i++)
+                if (option->choices[i].value == var->value) return selectOption(*option, i);
+            return false;
+        }
         case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE:
-            *static_cast<bool *>(data) = false;
+            *static_cast<bool *>(data) = optionsDirty;
+            optionsDirty = false;
             return true;
         case RETRO_ENVIRONMENT_GET_LANGUAGE:
             *static_cast<unsigned *>(data) = RETRO_LANGUAGE_ENGLISH;
@@ -152,9 +250,10 @@ void audioSingle(int16_t left, int16_t right) {
 void inputPoll() {}
 
 int16_t inputState(unsigned port, unsigned device, unsigned index, unsigned id) {
-    if (port != 0 || index != 0 || device != RETRO_DEVICE_JOYPAD) return 0;
-    if (id == RETRO_DEVICE_ID_JOYPAD_MASK) return static_cast<int16_t>(buttons);
-    return id < 16 ? (buttons >> id) & 1u : 0;
+    if (port >= 4 || index != 0 || device != RETRO_DEVICE_JOYPAD) return 0;
+    const auto pad = static_cast<uint16_t>(buttons >> (port * 16u));
+    if (id == RETRO_DEVICE_ID_JOYPAD_MASK) return static_cast<int16_t>(pad);
+    return id < 16 ? (pad >> id) & 1u : 0;
 }
 
 template <size_t Size>
@@ -173,15 +272,23 @@ void close() {
     if (loaded) retro_unload_game();
     if (initialized) retro_deinit();
     initialized = loaded = false;
+    coreOptions.clear();
+    optionsDirty = false;
 }
 
-const char *open(const char *rom, const char *system, const char *save) {
+const char *open(const char *rom, const char *system, const char *save, bool patched, bool linked) {
     if (initialized) return "An arcade session is already open.";
     if (!readPath(rom, romPath) || !readPath(system, systemDir) || !readPath(save, saveDir)) {
         return "The local file path is invalid or too long.";
     }
     if (retro_api_version() != RETRO_API_VERSION) return "Incompatible FBNeo core.";
-    width = height = rotation = buttons = 0;
+    width = height = rotation = 0;
+    memset(inputMasks, 0, sizeof(inputMasks));
+    usePatchedRom = patched;
+    localLink = linked;
+    buttons = 0;
+    coreOptions.clear();
+    optionsDirty = false;
     displayAspect = 0.f;
     driverStarted = failed = shutdownRequested = false;
     errorText[0] = '\0';
@@ -211,12 +318,54 @@ const char *open(const char *rom, const char *system, const char *save) {
     return nullptr;
 }
 
-bool step(uint16_t input) {
+bool step(uint64_t input) {
     if (!loaded) return false;
     buttons = input;
     audioSize = 0;
     retro_run();
     return !shutdownRequested && !failed;
+}
+
+bool reset() {
+    if (!loaded || failed || shutdownRequested) return false;
+    buttons = 0;
+    audioSize = 0;
+    retro_reset();
+    return !failed && !shutdownRequested;
+}
+
+size_t stateSize() {
+    if (!loaded || failed || shutdownRequested) return 0;
+    const size_t size = retro_serialize_size();
+    return size <= kMaxState ? size : 0;
+}
+
+bool saveState(void *data, size_t size) {
+    return data && size && size == stateSize() && retro_serialize(data, size);
+}
+
+bool loadState(const void *data, size_t size) {
+    return data && size && size == stateSize() && retro_unserialize(data, size);
+}
+
+const std::vector<Option> &options() { return coreOptions; }
+
+bool setOption(const char *key, int choice) {
+    auto *option = findOption(key);
+    return loaded && option && option->visible && choice >= 0 && selectOption(*option, static_cast<unsigned>(choice));
+}
+
+unsigned inputMask(unsigned port) { return port < 4 ? inputMasks[port] : 0; }
+
+uint64_t linkCheckpoint() {
+    // Compare only generated AV, not pointers, padding, or serialized host state.
+    uint64_t value = UINT64_C(14695981039346656037);
+    auto mix = [&](uint32_t n) { value = (value ^ n) * UINT64_C(1099511628211); };
+    mix(width); mix(height); mix(rotation);
+    for (size_t i = 0; i < size_t(width) * height; ++i) mix(frame[i]);
+    mix(static_cast<uint32_t>(audioSize));
+    for (size_t i = 0; i < audioSize; ++i) mix(static_cast<uint16_t>(::audio[i]));
+    return value;
 }
 
 Video video() { return {frame, width, height, rotation, displayAspect}; }

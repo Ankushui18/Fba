@@ -26,9 +26,16 @@ core=$(cd -- "$core" && pwd)
   echo "Use an unchanged checkout of $core_url at $core_rev (new directory via FBNEO_SOURCE)." >&2; exit 1;
 }
 
+out="$root/build/core"
+if [[ ${ARCADE_LINK:-0} == 1 ]]; then
+  copy="$root/.cache/FBNeo-link"
+  "$root/tools/prepare-link-core.sh" "$core" "$copy"
+  core="$copy"
+  out="$root/build/core-link"
+fi
 port="$core/src/burner/libretro"
 "$ndk/ndk-build" -C "$port" -j"$jobs" \
   "NDK_PROJECT_PATH=$port" "APP_BUILD_SCRIPT=$port/jni/Android.mk" \
   "NDK_APPLICATION_MK=$port/jni/Application.mk" "APP_ABI=$abis" \
   "APP_PLATFORM=android-$min_sdk" NDK_DEBUG=0 APP_SUPPORT_FLEXIBLE_PAGE_SIZES=true \
-  "NDK_OUT=$root/build/core/obj" "NDK_LIBS_OUT=$root/build/core/lib"
+  "NDK_OUT=$out/obj" "NDK_LIBS_OUT=$out/lib"
