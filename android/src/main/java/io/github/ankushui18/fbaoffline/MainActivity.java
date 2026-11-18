@@ -14,7 +14,6 @@ import android.media.AudioManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
-import android.provider.DocumentsContract;
 import android.provider.OpenableColumns;
 import android.text.format.Formatter;
 import android.util.SparseIntArray;
@@ -64,14 +63,14 @@ import java.util.function.IntConsumer;
 import static io.github.ankushui18.fbaoffline.Joypad.directions;
 
 public final class MainActivity extends Activity implements GameSession.Callbacks {
-    private static final int PICK_ZIPS = 101, PICK_FOLDER = 102, PICK_ART = 103, EXPORT_SHOT = 104;
-    private static final int MAX_BATCH = 64, FOLDER_LIMIT = 256, HISTORY_LIMIT = 24;
+    private static final int PICK_ZIPS = 101, PICK_FOLDER = 102, PICK_ART = 103, EXPORT_SHOT = 104, PICK_SKIN = 105;
+    private static final int MAX_BATCH = 64, HISTORY_LIMIT = 24;
     private static final String RECENT_FILES = "recent_roms", FAVORITES = "favorites";
     private static final String[] PAD_MODES = {"Custom", "Auto (game buttons)", "Compact (fixed)"};
     private static final String[] FILTERS = {"Sharp pixels", "Smooth (bilinear)", "HQ2x", "HQ3x", "HQ4x"};
     private static final String[] SKIPS = {"Off", "Skip 1", "Skip 2", "Skip 3", "Skip 4", "Auto"};
     private static final String[] FACE = {"A", "B", "C", "D", "E", "F"};
-    private static final String[] ASPECTS = {"Fit game aspect", "Fill screen", "Force 4:3", "Force 3:4", "Integer scale"};
+    private static final String[] ASPECTS = {"Fit game aspect", "Fill screen", "Force 4:3", "Force 3:4", "Integer scale", "Original size (1×)"};
     private static final String[] ORIENTATIONS = {"Follow device", "Landscape", "Reverse landscape", "Portrait", "Reverse portrait"};
     private static final int[] ORIENTATION_CODES = {ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED, ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE,
             ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE, ActivityInfo.SCREEN_ORIENTATION_PORTRAIT, ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT};
@@ -83,9 +82,12 @@ public final class MainActivity extends Activity implements GameSession.Callback
     private LibraryScreen library;
     private GameCatalog catalog;
     private LibraryTools libraryTools;
+    private RomFolders romFolders;
+    private SkinStore skins;
     private LinkMenu linkMenu;
     private boolean foreground, importing, muted, touchVisible, loaded;
-    private PadSkin skin;
+    private PadArt skin;
+    private String skinSelection;
     private SharedPreferences settings;
     private AudioManager audio;
     private AudioFocusRequest focusRequest;
@@ -106,8 +108,7 @@ public final class MainActivity extends Activity implements GameSession.Callback
         inputManager = getSystemService(android.hardware.input.InputManager.class);
         if (inputManager != null) inputManager.registerInputDeviceListener(devices, null);
         settings = getSharedPreferences("arcade_ui", MODE_PRIVATE);
-        muted = settings.getBoolean("muted", false);
-        touchVisible = settings.getBoolean("touch_visible", true);
+        skins = new SkinStore(new File(privateData, "controller-skins"));
         refreshSkin();
         if (saved != null) { artSet = saved.getString("artSet"); exportPath = saved.getString("exportPath"); }
         catalog = new GameCatalog(this);
@@ -117,6 +118,13 @@ public final class MainActivity extends Activity implements GameSession.Callback
             @Override public void play(File rom, PatchStore.Entry patch, int slot) { MainActivity.this.play(rom, patch, slot); }
             @Override public <T> void job(String status, Callable<T> task, Consumer<T> done) { libraryJob(status, task, done); }
             @Override public void note(String message) { showLibrary(message); }
+            @Override public void info(File rom) { gameInfo(rom); }
+        });
+        romFolders = new RomFolders(this, settings, new RomFolders.Host() {
+            @Override public <T> void job(String status, Callable<T> task, Consumer<T> done) { libraryJob(status, task, done); }
+            @Override public void choose() { chooseTree(PICK_FOLDER); }
+            @Override public void copy(List<Uri> zips, String note) { startZipImport(zips, note); }
+            @Override public void note(String text) { showLibrary(text); }
         });
         showLibrary(null);
         catalog.load(library::refreshCatalog);
@@ -132,7 +140,7 @@ public final class MainActivity extends Activity implements GameSession.Callback
     private LibraryScreen createLibrary() {
         LibraryScreen screen = new LibraryScreen(this, catalog, settings, new LibraryScreen.Actions() {
             @Override public void importZips() { chooseZips(); }
-            @Override public void importFolder() { chooseFolder(); }
+            @Override public void browseFolder() { browseRoms(); }
             @Override public void settings() { showSettings(); }
             @Override public void play(File file) { MainActivity.this.play(file); }
             @Override public void options(View anchor, File file) { romOptions(anchor, file); }
@@ -303,6 +311,12 @@ public final class MainActivity extends Activity implements GameSession.Callback
     }
 
     private void gameInfo(File file) {
+        if (game != null) { showGameInfo(file, libraryTools.gameNote(file)); return; }
+        library.hideKeyboard();
+        libraryJob("Reading game info…", () -> libraryTools.gameNote(file), note -> showGameInfo(file, note));
+    }
+
+    private void showGameInfo(File file, String note) {
         ArcadeUi ui = new ArcadeUi(this);
         GameCatalog.Game found = catalog.game(file);
         ScrollView scroll = new ScrollView(this);
@@ -322,8 +336,10 @@ public final class MainActivity extends Activity implements GameSession.Callback
         infoLine(body, ui, "Year", found.year);
         infoLine(body, ui, "Parent", found.parent);
         if (!found.dependency.equals(found.parent)) infoLine(body, ui, "Dependency", found.dependency);
+        infoLine(body, ui, "Local note", note);
         AlertDialog.Builder dialog = new AlertDialog.Builder(this).setTitle(found.title(library.chineseNames())).setView(scroll)
                 .setPositiveButton("Close", null);
+        if (game == null) dialog.setNegativeButton("Local note", (d, w) -> libraryTools.noteActions(file, !note.isEmpty()));
         if ((game == null || game.link == null) && catalog.cover(found.set).isFile()) dialog.setNeutralButton("Export image", (d, w) -> exportArt(found.set));
         dialog.show();
     }
@@ -336,34 +352,20 @@ public final class MainActivity extends Activity implements GameSession.Callback
         ui.space(body, 8);
     }
 
-    private void chooseFolder() {
+    private void browseRoms() {
         if (importing || game != null) return;
         library.hideKeyboard();
-        try {
-            startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).putExtra(Intent.EXTRA_LOCAL_ONLY, true)
-                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), PICK_FOLDER);
-        } catch (android.content.ActivityNotFoundException missing) { showLibrary("This device doesn't have a folder picker."); }
+        romFolders.browse();
     }
 
-    private void importFolder(Uri tree) {
-        List<Uri> chosen = new ArrayList<>();
-        String reason = null;
-        try {
-            String id = DocumentsContract.getTreeDocumentId(tree);
-            Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, id);
-            String[] fields = {DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME};
-            try (Cursor list = getContentResolver().query(children, fields, null, null, null)) {
-                while (list != null && list.moveToNext() && chosen.size() < FOLDER_LIMIT) {
-                    if (Thread.currentThread().isInterrupted()) return;
-                    String name = list.getString(1);
-                    try { RomStore.archiveName(name); } catch (IOException ignored) { continue; }
-                    chosen.add(DocumentsContract.buildDocumentUriUsingTree(tree, list.getString(0)));
-                }
-                if (chosen.size() == FOLDER_LIMIT) reason = "Imported up to the first " + FOLDER_LIMIT + " ZIPs in the folder.";
-            }
-        } catch (RuntimeException unavailable) { finishImport("Couldn't read this folder."); return; }
-        if (chosen.isEmpty()) finishImport("No ROM ZIPs found in this folder. Choose the folder containing the ZIPs directly.");
-        else importZips(chosen, reason);
+    private void chooseTree(int request) {
+        if (importing || game != null) return;
+        library.hideKeyboard();
+        Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).putExtra(Intent.EXTRA_LOCAL_ONLY, true)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        if (request == PICK_FOLDER) pick.addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        try { startActivityForResult(pick, request); }
+        catch (android.content.ActivityNotFoundException missing) { showLibrary("This device doesn't have a folder picker."); }
     }
 
     private void pickArt(String set) {
@@ -440,12 +442,13 @@ public final class MainActivity extends Activity implements GameSession.Callback
             return;
         }
         if (importing || game != null) return;
-        if (request == PICK_FOLDER) {
-            if (chosenUri != null && "content".equals(chosenUri.getScheme())) {
-                importing = true;
-                showLibrary("Reading ROM ZIPs in the selected folder…");
-                importer.execute(() -> importFolder(chosenUri));
-            }
+        if (request == PICK_FOLDER) { romFolders.picked(chosenUri); return; }
+        if (request == PICK_SKIN) {
+            libraryJob("Copying controller skin…", () -> skins.install(getContentResolver(), chosenUri), added -> {
+                selectSkin(added.key(added.roundByDefault()));
+                showLibrary("Controller skin imported: " + added.title);
+                showImportedSkin(added);
+            });
             return;
         }
         if (request != PICK_ZIPS) return;
@@ -463,10 +466,14 @@ public final class MainActivity extends Activity implements GameSession.Callback
             showLibrary("Select up to " + MAX_BATCH + " ZIPs at a time.");
             return;
         }
-        List<Uri> chosen = new ArrayList<>(urls);
+        startZipImport(new ArrayList<>(urls), null);
+    }
+
+    private void startZipImport(List<Uri> chosen, String note) {
+        if (importing || game != null || chosen.isEmpty()) return;
         importing = true;
         showLibrary("Checking and copying " + chosen.size() + (chosen.size() == 1 ? " file…" : " files…"));
-        importer.execute(() -> importZips(chosen, null));
+        importer.execute(() -> importZips(chosen, note));
     }
 
     private void importZips(List<Uri> chosen, String folderNote) {
@@ -740,7 +747,11 @@ public final class MainActivity extends Activity implements GameSession.Callback
     private void writeInt(String key, int value) { settings.edit().putInt(target(key), value).apply(); applySettings(); }
     private void writeBool(String key, boolean value) { settings.edit().putBoolean(target(key), value).apply(); applySettings(); }
     private void refreshSkin() {
-        skin = PadSkin.stored(readText("skin", PadSkin.CLASSIC_CIRCLE.name()));
+        String selected = readText("skin", PadSkin.CLASSIC_CIRCLE.name());
+        if (!selected.equals(skinSelection)) {
+            skin = skins.resolve(selected);
+            skinSelection = selected;
+        }
         touchVisible = readBool("touch_visible", true);
         muted = readBool("muted", false);
     }
@@ -751,9 +762,11 @@ public final class MainActivity extends Activity implements GameSession.Callback
         if (game == null || player == null) return;
         clearInputs();
         for (int i = 0; i < keyMap.length; i++) keyMap[i] = readInt("key_" + i, 0);
-        int[] combos = new int[4];
-        for (int i = 0; i < combos.length; i++) combos[i] = readInt("combo_" + i, 0) & HardwareKeys.FACE_MASK;
-        game.turboMask = readInt("turbo", 0) & HardwareKeys.FACE_MASK;
+        int[] combos = new int[PadBindings.EXTRAS], faces = new int[FACE.length];
+        for (int i = 0; i < combos.length; i++) combos[i] = readInt("combo_" + i, 0);
+        for (int i = 0; i < faces.length; i++) faces[i] = readInt("face_combo_" + i, 0);
+        bindings = new PadBindings(faces, combos);
+        game.turboMask = readInt("turbo", 0) & PadBindings.FACE_MASK;
         game.turboRate = Math.max(2, Math.min(30, readInt("turbo_rate", 10)));
         boolean linked = game.link != null;
         game.touchPort = linked ? game.link.player() : range(readInt("touch_player", 0), 3);
@@ -768,7 +781,7 @@ public final class MainActivity extends Activity implements GameSession.Callback
         player.setPlayer(game.touchPort);
         player.setFps(readBool("show_fps", false));
         player.setPad(PadProfile.decode(readText("pad_portrait", null)), PadProfile.decode(readText("pad_landscape", null)),
-                combos, !linked && readBool("player_button", false), range(readInt("pad_mode", 0), 2), readBool("full_screen_pad", false));
+                bindings, !linked && readBool("player_button", false), range(readInt("pad_mode", 0), 2), readBool("full_screen_pad", false));
         player.setFeedback(readBool("pad_animation", true), readBool("pad_haptic", false));
         int requested = ORIENTATION_CODES[range(readInt("orientation", 0), ORIENTATION_CODES.length - 1)];
         if (getRequestedOrientation() != requested) setRequestedOrientation(requested);
@@ -777,14 +790,14 @@ public final class MainActivity extends Activity implements GameSession.Callback
     }
 
     private void showSettings() {
-        if (editor != null) return;
-        String[] items = {"Virtual controls", "Display & audio", "Physical keys", "Import ROM folder", "Quick guide", "Core license", "Reset game settings"};
+        if (editor != null || importing) return;
+        String[] items = {"Virtual controls", "Display & audio", "Physical keys", "Browse ROM folder", "Quick guide", "Core license", "Reset game settings"};
         new AlertDialog.Builder(this).setTitle("Settings · Global defaults").setItems(items, (d, which) -> {
             switch (which) {
                 case 0: showControls(); break;
                 case 1: showDisplay(); break;
                 case 2: showKeyBindings(); break;
-                case 3: chooseFolder(); break;
+                case 3: browseRoms(); break;
                 case 4: showGuide(); break;
                 case 5: showLicense(); break;
                 case 6: resetSettings(); break;
@@ -816,7 +829,7 @@ public final class MainActivity extends Activity implements GameSession.Callback
 
     private void showControls() {
         String[] menu = {"Controller skin · " + skin.title, "Edit layout · drag and resize",
-                "Touch controls · " + status(touchVisible), "Combo buttons · 1–4", "Turbo / autofire",
+                "Touch controls · " + status(touchVisible), "Button combinations · A–F and 1–4", "Turbo / autofire",
                 "Touch player · " + (range(readInt("touch_player", 0), 3) + 1),
                 "Show player selector · " + status(readBool("player_button", false)),
                 "Button animation · " + status(readBool("pad_animation", true)),
@@ -875,20 +888,23 @@ public final class MainActivity extends Activity implements GameSession.Callback
     }
 
     private void showCombos() {
-        String[] choices = new String[4];
-        for (int i = 0; i < choices.length; i++) {
-            int mask = readInt("combo_" + i, 0);
+        String[] labels = new String[FACE.length + PadBindings.EXTRAS];
+        for (int i = 0; i < labels.length; i++) {
+            int mask = readInt(comboKey(i), 0) & PadBindings.FACE_MASK;
             List<String> names = new ArrayList<>();
-            for (int j = 0; j < FACE.length; j++) if ((mask & HardwareKeys.FACE_BITS[j]) != 0) names.add(FACE[j]);
-            choices[i] = "Combo " + (i + 1) + " · " + (names.isEmpty() ? "Hidden" : String.join(" + ", names));
+            for (int j = 0; j < FACE.length; j++) if ((mask & PadBindings.FACE_BITS[j]) != 0) names.add(FACE[j]);
+            labels[i] = comboLabel(i) + " · " + (names.isEmpty() ? i < FACE.length ? "Normal" : "Hidden" : String.join(" + ", names));
         }
-        choice("Combo buttons", choices, -1, i -> faceButtons("Combo " + (i + 1), "combo_" + i));
+        choice("Button combinations", labels, -1, i -> faceButtons(comboLabel(i) + " sends…", comboKey(i)));
     }
+
+    private static String comboLabel(int i) { return i < FACE.length ? FACE[i] : "Combo " + (i - FACE.length + 1); }
+    private static String comboKey(int i) { return i < FACE.length ? "face_combo_" + i : "combo_" + (i - FACE.length); }
 
     private void showTurbo() {
         int rate = readInt("turbo_rate", 10);
         choice("Turbo / autofire", new String[] {"Choose buttons to repeat", "Repeat speed · " + rate + " Hz"}, -1, i -> {
-            if (i == 0) faceButtons("Repeat these buttons while held", "turbo");
+            if (i == 0) faceButtons("Repeat after a short hold", "turbo");
             else choice("Repeat speed", new String[] {"5 Hz", "10 Hz", "15 Hz", "20 Hz"}, Math.max(0, Math.min(3, rate / 5 - 1)),
                     n -> writeInt("turbo_rate", (n + 1) * 5));
         });
@@ -897,11 +913,11 @@ public final class MainActivity extends Activity implements GameSession.Callback
     private void faceButtons(String title, String key) {
         int mask = readInt(key, 0);
         boolean[] selected = new boolean[FACE.length];
-        for (int i = 0; i < selected.length; i++) selected[i] = (mask & HardwareKeys.FACE_BITS[i]) != 0;
+        for (int i = 0; i < selected.length; i++) selected[i] = (mask & PadBindings.FACE_BITS[i]) != 0;
         new AlertDialog.Builder(this).setTitle(title).setMultiChoiceItems(FACE, selected, (d, n, checked) -> selected[n] = checked)
                 .setNegativeButton("Cancel", null).setPositiveButton("Save", (d, w) -> {
                     int next = 0;
-                    for (int i = 0; i < selected.length; i++) if (selected[i]) next |= HardwareKeys.FACE_BITS[i];
+                    for (int i = 0; i < selected.length; i++) if (selected[i]) next |= PadBindings.FACE_BITS[i];
                     writeInt(key, next);
                 }).show();
     }
@@ -943,12 +959,22 @@ public final class MainActivity extends Activity implements GameSession.Callback
         LinearLayout body = ui.column();
         body.setPadding(ui.dp(17), ui.dp(5), ui.dp(17), ui.dp(6));
         scroll.addView(body);
-        body.addView(ui.text("Original FBA4droid artwork", 14, ArcadeUi.MUTED, false));
-        ui.space(body, 11);
-        AlertDialog dialog = new AlertDialog.Builder(this).setTitle("Controller skin").setView(scroll)
-                .setNegativeButton("Close", null).create();
+        body.addView(ui.text(game == null ? "Built-in and imported FBA4droid artwork. For a custom skin, choose its individual PNG folder."
+                : "Choose a skin. To import a new folder, return to library Settings.", 14, ArcadeUi.MUTED, false));
+        ui.space(body, 9);
+        AlertDialog.Builder builder = new AlertDialog.Builder(this).setTitle("Controller skin").setView(scroll)
+                .setNegativeButton("Close", null);
+        if (game == null) builder.setPositiveButton("Import folder", (d, w) -> chooseTree(PICK_SKIN));
+        AlertDialog dialog = builder.create();
+        for (SkinStore.Entry entry : skins.entries()) {
+            boolean selected = skin.key.equals(entry.key(true)) || skin.key.equals(entry.key(false));
+            android.widget.Button button = ui.button(entry.title + (selected ? "  ✓" : "") + " · Imported", ArcadeUi.LIGHT_BLUE, ArcadeUi.NAVY, 10);
+            button.setOnClickListener(v -> { dialog.dismiss(); showImportedSkin(entry); });
+            body.addView(button, new LinearLayout.LayoutParams(-1, -2));
+            ui.space(body, 6);
+        }
         for (PadSkin candidate : PadSkin.values()) {
-            boolean selected = candidate == skin;
+            boolean selected = candidate.name().equals(skin.key);
             LinearLayout option = ui.column();
             option.setPadding(ui.dp(10), ui.dp(8), ui.dp(10), ui.dp(8));
             option.setBackground(ui.tappable(selected ? ArcadeUi.LIGHT_BLUE : ArcadeUi.WHITE,
@@ -956,25 +982,75 @@ public final class MainActivity extends Activity implements GameSession.Callback
             option.setFocusable(true);
             option.setSelected(selected);
             option.setContentDescription(candidate.title + ". " + candidate.detail);
-            PadPreview preview = new PadPreview(this, candidate, false);
+            PadPreview preview = new PadPreview(this, new PadArt(candidate));
             preview.setBackground(ui.gradient(0xff253e56, ArcadeUi.NIGHT, 8));
             option.addView(preview, new LinearLayout.LayoutParams(-1, ui.dp(61)));
             ui.space(option, 6);
             option.addView(ui.text(candidate.title + (selected ? "  ✓" : ""), 15, ArcadeUi.INK, true));
             option.addView(ui.text(candidate.detail, 12, ArcadeUi.MUTED, false));
-            option.setOnClickListener(v -> { settings.edit().putString(target("skin"), candidate.name()).apply(); applySettings(); dialog.dismiss(); });
+            option.setOnClickListener(v -> { selectSkin(candidate.name()); dialog.dismiss(); });
             body.addView(option, new LinearLayout.LayoutParams(-1, -2));
             ui.space(body, 7);
         }
         dialog.show();
     }
 
+    private void showImportedSkin(SkinStore.Entry entry) {
+        ArcadeUi ui = new ArcadeUi(this);
+        LinearLayout body = ui.column();
+        body.setPadding(ui.dp(17), ui.dp(5), ui.dp(17), ui.dp(8));
+        ScrollView scroll = new ScrollView(this);
+        scroll.addView(body);
+        body.addView(ui.text("Graphics only. Missing frames use built-in artwork. Your touch layout stays the same.", 14, ArcadeUi.MUTED, false));
+        AlertDialog.Builder builder = new AlertDialog.Builder(this).setTitle(entry.title).setView(scroll)
+                .setNegativeButton("Back", (d, w) -> showSkinPicker());
+        if (game == null) builder.setNeutralButton("Remove", (d, w) -> removeSkin(entry));
+        AlertDialog dialog = builder.create();
+        for (boolean round : new boolean[]{true, false}) {
+            ui.space(body, 7);
+            android.graphics.Bitmap icon = entry.preview(round);
+            if (icon != null) {
+                ImageView preview = new ImageView(this);
+                preview.setImageBitmap(icon);
+                preview.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                preview.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+                preview.setBackground(ui.gradient(0xff253e56, ArcadeUi.NIGHT, 8));
+                body.addView(preview, new LinearLayout.LayoutParams(-1, ui.dp(58)));
+            }
+            String key = entry.key(round);
+            android.widget.Button button = ui.button((round ? "Use round joystick" : "Use D-pad") + (skin.key.equals(key) ? "  ✓" : ""),
+                    ArcadeUi.LIGHT_BLUE, ArcadeUi.NAVY, 10);
+            button.setOnClickListener(v -> { selectSkin(key); dialog.dismiss(); });
+            body.addView(button, new LinearLayout.LayoutParams(-1, -2));
+        }
+        dialog.show();
+    }
+
+    private void selectSkin(String key) {
+        settings.edit().putString(target("skin"), key).apply();
+        applySettings();
+    }
+
+    private void removeSkin(SkinStore.Entry entry) {
+        new AlertDialog.Builder(this).setTitle("Remove imported skin?")
+                .setMessage("Removes this private copy, not the original PNGs or your layout.")
+                .setNegativeButton("Cancel", (d, w) -> showImportedSkin(entry)).setPositiveButton("Remove", (d, w) ->
+                        libraryJob("Removing controller skin…", () -> { skins.remove(entry); return entry; }, removed -> {
+                            SharedPreferences.Editor edit = settings.edit();
+                            for (Map.Entry<String, ?> pref : settings.getAll().entrySet()) {
+                                if (removed.key(true).equals(pref.getValue()) || removed.key(false).equals(pref.getValue())) edit.remove(pref.getKey());
+                            }
+                            edit.apply(); skinSelection = null; refreshSkin();
+                            showLibrary("Imported skin removed."); showSkinPicker();
+                        })).show();
+    }
+
     private void showGuide() {
         new AlertDialog.Builder(this).setTitle("How to play")
-                .setMessage("1. Import ROM ZIPs or choose the folder containing them. Keep the FBNeo names and import any parent or BIOS ZIPs alongside them. No ROMs or BIOS are included.\n\n"
+                .setMessage("1. Import ROM ZIPs or open Files → Browse folder to remember and navigate a device folder. Keep the FBNeo names and import any parent or BIOS ZIPs alongside them. No ROMs or BIOS are included.\n\n"
                         + "2. Tap a game, then tap Coin and Start. Touch controls and connected gamepads can be used together.\n\n"
                         + "3. Tap Pause for cheats, save slots and game settings. Under Controls → Edit layout, drag each control and change its size. Rotate to edit the other layout.\n\n"
-                        + "4. Open the ⋮ menu on a game row to manage states, import custom cheats, or launch a separate IPS variant.\n\n"
+                        + "4. Open the ⋮ menu on a game row to manage states, import local notes or cheats, or launch a separate IPS variant.\n\n"
                         + "Independent FinalBurn Neo frontend. Non-commercial use only.")
                 .setPositiveButton("Got it", null).setNeutralButton("Core license", (d, w) -> showLicense()).show();
     }
@@ -1012,7 +1088,7 @@ public final class MainActivity extends Activity implements GameSession.Callback
                 .setNegativeButton("Cancel", null).setPositiveButton("Reset", (d, w) -> {
                     SharedPreferences.Editor reset = settings.edit();
                     for (String key : settings.getAll().keySet()) {
-                        if (!key.equals("tiles") && !key.equals("sorting") && !key.equals("chinese_names")
+                        if (!key.equals("tiles") && !key.equals("sorting") && !key.equals("chinese_names") && !key.equals(RomFolders.SAVED_FOLDER)
                                 && !key.equals(FAVORITES) && !key.equals(RECENT_FILES)) reset.remove(key);
                     }
                     reset.apply();
@@ -1022,7 +1098,9 @@ public final class MainActivity extends Activity implements GameSession.Callback
 
     private void listenForKey(int index) {
         AlertDialog dialog = new AlertDialog.Builder(this).setTitle("Bind " + HardwareKeys.NAMES[index])
-                .setMessage("Press a gamepad button or keyboard key. Connected gamepads use separate player ports; the keyboard uses Player 1. Escape or the controller's Mode button pauses the game.")
+                .setMessage((index >= HardwareKeys.NAMES.length - PadBindings.EXTRAS
+                        ? "Set the combo's buttons in Virtual controls first. This binding sends that same combination.\n\n" : "")
+                        + "Press a gamepad button or keyboard key. Escape or the controller's Mode button pauses the game.")
                 .setNeutralButton("Default", (d, w) -> writeInt("key_" + index, 0))
                 .setPositiveButton("Unbind", (d, w) -> writeInt("key_" + index, -1)).setNegativeButton("Cancel", null).create();
         dialog.setOnKeyListener((d, code, event) -> {
@@ -1060,6 +1138,7 @@ public final class MainActivity extends Activity implements GameSession.Callback
     }
     private final android.util.SparseArray<Pressed> hardware = new android.util.SparseArray<>();
     private final int[] keyMap = new int[HardwareKeys.NAMES.length];
+    private PadBindings bindings = PadBindings.DEFAULT;
     private android.hardware.input.InputManager inputManager;
     private final android.hardware.input.InputManager.InputDeviceListener devices = new android.hardware.input.InputManager.InputDeviceListener() {
         @Override public void onInputDeviceAdded(int id) {}
@@ -1117,7 +1196,7 @@ public final class MainActivity extends Activity implements GameSession.Callback
             return true;
         }
         if (!canPlay() || !readBool("physical_keys", true)) return super.dispatchKeyEvent(event);
-        int button = HardwareKeys.mask(key, keyMap);
+        int button = HardwareKeys.mask(key, keyMap, bindings);
         if (button == 0) return super.dispatchKeyEvent(event);
         int port = port(event);
         if (port < 0) return true;

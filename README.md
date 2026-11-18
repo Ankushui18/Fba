@@ -6,32 +6,27 @@ update of the original `com.joyemu.fbaapp`.
 
 ## Install and play
 
-The original 0.4.0 signing key was not recovered. The rebuilt ARM64 APKs
-need Android 8 or later and install as **FBA Arcade Recovery** alongside old
-versions. Keep the old app if you need its library or saves. Recovery Offline
-and Recovery Link beta replace each other; choose one APK.
+**0.5.0 is the FBA4droid parity test.** The signed Recovery APKs are for
+64-bit ARM phones on Android 8 or later. The supplied builds use the 0.4.0
+Recovery app ID and certificate, with versionCode 5: install one **over
+0.4.0 Recovery without uninstalling** to keep its private data. Offline and
+Link beta replace one another. Neither is an update or a migration for the
+original FBA4droid, the original FBA Arcade test app, or v0.1/v0.2. A separately
+built APK will only update an existing install if it uses the same signer.
 
-| Rebuilt 0.4.0 test APK | Use it for |
+| 0.5.0 test build output | Use it for |
 |---|---|
-| `artifacts/fba-arcade-0.4.0-recovery-arm64-v8a-test.apk` | Offline play, **zero Android permissions**. |
-| `artifacts/fba-arcade-0.4.0-recovery-link-arm64-v8a-test.apk` | Optional **Link beta** for two-phone play; real Wi-Fi/Bluetooth hardware testing is pending. |
+| `fba-arcade-0.5.0-recovery-arm64-v8a-test.apk` | Offline play, **zero Android permissions**. |
+| `fba-arcade-0.5.0-recovery-link-arm64-v8a-test.apk` | Optional [Link beta](docs/LINK_PLAY.md), including all solo features. Two-phone Android transport testing is pending. |
 
-The original files below are documented for users who already have them.
+The previous [0.4.0 Recovery prerelease](https://github.com/Ankushui18/Fba/releases/tag/v0.4.0-recovery)
+is unchanged. See the [feature-by-feature 1.77 comparison](docs/FBA4DROID_PARITY.md)
+for the restored features and remaining compatibility gaps.
 
-| Original signed 0.4.0 test APK | Use it for |
-|---|---|
-| `artifacts/fba-arcade-0.4.0-arm64-v8a-test.apk` | The regular build. All solo/local controller features, **zero Android permissions**. |
-| `artifacts/fba-arcade-0.4.0-link-arm64-v8a-test.apk` | Optional **Link beta**. The same solo features plus two-phone Wi-Fi/LAN or paired Bluetooth play. See [Link setup and limitations](docs/LINK_PLAY.md). |
-
-Both are for 64-bit ARM phones on Android 8 or later. Both have versionCode 4,
-use the same application ID and signer as **our v0.3.0 test APK**, and are
-alternatives to each other. Install one **over v0.3.0 without uninstalling** to
-keep its library, settings and saves. The original FBA4droid and our v0.1/0.2
-installs are separate apps: keep them installed if you still need their data.
-
-1. In **Games**, tap the folder icon to select ZIPs, or use **Files → Choose
-   folder**. Import compatible ROM archives you have the right to use. Keep the
-   FBNeo set names, and import any required parent and BIOS ZIPs alongside them.
+1. In **Games**, tap the folder icon to pick ZIPs, or use **Files → Browse folder**.
+   The Android picker can remember a folder grant; browse its subfolders and
+   choose ZIPs to copy. Import compatible ROM archives you have the right to use.
+   Keep the FBNeo set names and import any required parent and BIOS ZIPs too.
    A legacy FB Alpha archive with the same name may be a different revision.
 2. Tap a game, then **Coin** and **Start**. Use touch, an Android gamepad, or a
    keyboard. Keyboard defaults: arrows for movement, X/Z/S/A/W/Q for arcade
@@ -42,15 +37,15 @@ installs are separate apps: keep them installed if you still need their data.
 | Where | What it does |
 |---|---|
 | **Games → Sorting / Filter** | List/grid with thumbnails, Favorites, Recent, search, board/category filters, English/Chinese titles and sorting by title, set, year, import date or board. |
-| **Game row ⋮ → Game info** | Title, set name, board, maker, year, parent/BIOS dependency and thumbnail. The row menu can import a cover, restore original art, or remove the private ZIP copy without deleting saves. |
+| **Game row ⋮ → Game info** | Catalog and artwork plus **Local note** to import/replace/remove an old `.rominfo` `.htm`/`.html` or `.txt` note. Only plain text is kept. The row menu can still import a cover, restore art or remove the private ZIP copy without deleting saves. |
 | **Game row ⋮ → Save states** | Preview, rename and delete individual slots, or launch directly from a slot. **Pause → Save / Load** uses the same six slots. **Pause → Screenshot** captures a clean frame, updates the cover/patch preview, and can export PNG. |
-| **Game row ⋮ → IPS patches** | Select the chip targeted by a standard `.ips`, then import it. Choose a saved patch to play it as a separate variant with its own preview, saves and emulated battery storage. The original ZIP is not modified. |
+| **Game row ⋮ → IPS patches** | Import a single `.ips` by chip, browse a legacy `.dat` folder for simple multi-file packs, or **Apply selected** profiles together. Each saved variant has its own preview, states and battery storage. The source ZIP is unchanged. |
 | **Game row ⋮ → Cheat files** | Import a legacy `.ini`, select a cheat ZIP containing `<set>.ini` at its top level, or paste INI text. A compatible custom list replaces the bundled list for that exact ZIP revision; **Restore built-in cheats** reverses it. |
 | **Pause → Cheats / DIP switches** | Choose a cheat or cabinet option, then **Apply → Resume**. Cheats start off and restart clears active choices. Some DIP changes need restart. Cheats may already have changed game memory when turned off. |
-| **Settings → Virtual controls** or **Pause → Controls** | Four original-art skins: Classic and Chrome, each with D-pad and round joystick. Custom drag/resize/hide positions are saved separately for portrait and landscape. Auto uses the game's digital button mappings; Compact uses fixed, smaller positions. Saving in the editor selects Custom. |
-| **Virtual controls / Physical keys** | Opacity, scale, dead zone, enlarged touch zone, press animation, haptics, four combo buttons, held-button turbo, player selector, rebindable physical keys and optional hardware input mirroring. Up to four local digital input ports, where the game supports them. |
-| **Pause → Display** | Aspect/size, orientation, full-screen portrait, sharp/bilinear or HQ2x/HQ3x/HQ4x, render frameskip 0–4 or Auto, FPS counter and sound. Optional GPU canvas takes effect next game launch. |
-| **Settings → Reset game settings** | Clear global and per-game playback preferences without removing games, cheats, patches, states, thumbnails, favorites or history. |
+| **Settings → Virtual controls** or **Pause → Controls** | Four built-in skins. From library Settings, **Controller skin → Import folder** copies legacy PNG frames from the chosen skin folder. Apply D-pad or round stick art. Edit layouts independently in portrait and landscape; Auto uses digital button mappings, Compact uses smaller fixed positions. |
+| **Virtual controls / Physical keys** | Independent joystick and button touch expansion under **Edit layout → Options**, plus opacity, scale, dead zone, animation and haptics. Set combinations on A–F or Combo 1–4; bind the latter under **Physical keys → EXT1–4**. Held-button repeat starts after a short hold. Up to four local digital input ports. |
+| **Pause → Display** | Fit/fill/aspect ratios, integer scale, **Original size (1×)**, orientation, fullscreen portrait, sharp/bilinear or HQ2x/HQ3x/HQ4x, render frameskip, FPS and sound. Optional GPU canvas takes effect next launch. |
+| **Settings → Reset game settings** | Clear global and per-game playback preferences without removing the library, folder grant, imported skins or notes, cheats, patches, states, thumbnails, favorites or history. |
 
 The library gear edits global defaults. In a game settings panel, choose
 **For this game** to customize it or **Use global** to clear overrides. The
@@ -58,11 +53,16 @@ round stick maps digital directions, not analog trackball or lightgun input.
 
 ### Compatibility limits
 
-- IPS supports literal and RLE changes to **one named, same-size chip** per
-  variant. That chip must be present in the selected ZIP with the pinned DAT's
-  expected size and CRC. Standard IPS does not identify the source revision;
-  select the chip and patch made for your set. Legacy multi-chip `.dat` packs,
-  IPS32 and patches needing expanded ROM space are not supported.
+- IPS uses literal and RLE writes to named, **same-size chips** in a matching
+  current FBNeo ZIP. Classic `.ips` doesn't prove the source revision. A `.dat`
+  supported by the [legacy subset](docs/FBA4DROID_PARITY.md#legacy-ips-subset) maps
+  chip names to same-folder IPS files. Up to 8 IPS files per saved variant;
+  later selected writes win. No cross-set chips, resizing, IPS32 or `.romdata`
+  board overrides. Real old packs beyond the tested subset can differ.
+- If Android's picker hides `.skin`, `.rominfo` or `.ips`, copy the individual
+  skin/patch folder or note to a visible directory first. Skin import accepts
+  recognized PNG filenames only (including pressed frames and preview icons).
+  It does not run anything in a skin or import legacy control-layout files.
 - Custom INI files support the sequential FBA byte-write option syntax. Includes,
   script-like directives and incompatible groups are not run. Example format
   (use actual CPU, address and value from a cheat for the selected set):
@@ -83,10 +83,12 @@ round stick maps digital directions, not analog trackball or lightgun input.
 
 ## Data and privacy
 
-The system picker grants access to files or a folder you select; imports are
-copied into private app storage and stay on the device. Limits: 64 ZIPs per
-picker selection, 256 at the top level of an imported folder, 512 MiB per ZIP.
-Uninstalling deletes this install's data. Export screenshots you want to keep.
+The Android picker gives read access to the files or folder you select. The ROM
+browser remembers one read-only folder grant where supported; **Forget** releases
+it without deleting any copies. ZIPs, notes, skins and patches are copied to
+private storage and stay on the device. Limits: 64 ZIPs per file selection, 256
+items per folder listing, and 512 MiB per ZIP. Uninstalling deletes this install's
+data. Export screenshots you want to keep.
 The optional Link APK adds narrowly scoped local multiplayer traffic and no
 background service. See [asset provenance and privacy](docs/PRIVACY_AND_CORE.md).
 
@@ -104,8 +106,8 @@ export ANDROID_NDK_HOME="$ANDROID_SDK_ROOT/ndk/28.2.13676358"
 ./tools/build-apk.sh
 ARCADE_LINK=1 ./tools/build-apk.sh
 ./tools/test.sh
-./tools/verify-apk.sh artifacts/fba-arcade-0.4.0-arm64-v8a-test.apk
-./tools/verify-apk.sh artifacts/fba-arcade-0.4.0-link-arm64-v8a-test.apk --link
+./tools/verify-apk.sh artifacts/fba-arcade-0.5.0-arm64-v8a-test.apk
+./tools/verify-apk.sh artifacts/fba-arcade-0.5.0-link-arm64-v8a-test.apk --link
 ```
 
 No Gradle/Maven dependencies or legacy APK files are needed. `tools/build-core.sh`

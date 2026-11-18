@@ -34,7 +34,7 @@ final class PadEditor extends FrameLayout {
     private int selected = DPAD;
     private boolean top = true, updating;
 
-    PadEditor(Context context, PadSkin skin, PadProfile portrait, PadProfile landscape, boolean fullScreen, Actions actions) {
+    PadEditor(Context context, PadArt skin, PadProfile portrait, PadProfile landscape, boolean fullScreen, Actions actions) {
         super(context);
         ui = new ArcadeUi(context);
         draft = new PadProfile[] {portrait, landscape};
@@ -103,7 +103,8 @@ final class PadEditor extends FrameLayout {
         addSlider(controls, "Opacity", 20, 100, current.opacity, n -> { current.opacity = n; preview.invalidate(); });
         addSlider(controls, "All buttons size", 60, 160, current.overall, n -> { current.overall = n; preview.invalidate(); });
         addSlider(controls, "Joystick dead zone", 12, 65, current.deadZone, n -> { current.deadZone = n; preview.invalidate(); });
-        addSlider(controls, "Extra touch area", 0, 35, current.touchMargin, n -> { current.touchMargin = n; preview.invalidate(); });
+        addSlider(controls, "Extra joystick touch area", 0, 35, current.stickMargin, n -> { current.stickMargin = n; preview.invalidate(); });
+        addSlider(controls, "Extra button touch area", 0, 35, current.buttonMargin, n -> { current.buttonMargin = n; preview.invalidate(); });
         if (preview.layout != null) {
             Box box = preview.layout.controls[selected];
             int x = Math.round(100 * (box.x + box.w / 2f) / Math.max(1, preview.getWidth()));
@@ -179,14 +180,14 @@ final class PadEditor extends FrameLayout {
         private int pointer = -1, picked = -1;
         private float offsetX, offsetY;
 
-        Preview(Context context, PadSkin skin) {
+        Preview(Context context, PadArt skin) {
             super(context);
-            artwork[DPAD] = context.getDrawable(skin.circle == 0 ? skin.directions[0] : skin.circle);
-            knob = skin.knob == 0 ? null : context.getDrawable(skin.knob);
-            for (int i = FIRST_ACTION; i < COMBO; i++) artwork[i] = context.getDrawable(skin.buttons[i - FIRST_ACTION][0]);
-            for (int i = 0; i < 4; i++) artwork[COMBO + i] = context.getDrawable(skin.combos[i]);
-            artwork[PLAYER] = context.getDrawable(skin.player[0]);
-            artwork[MENU] = context.getDrawable(R.drawable.legacy_classic_button_pause);
+            artwork[DPAD] = skin.ring(context);
+            if (artwork[DPAD] == null) artwork[DPAD] = skin.direction(context, 0);
+            knob = skin.knob(context);
+            for (int i = FIRST_ACTION; i < KEY_END; i++) artwork[i] = skin.button(context, i, false);
+            artwork[PLAYER] = skin.player(context, 0);
+            artwork[MENU] = skin.pause(context, false);
             setContentDescription("Drag a control. Use the options panel to change size or visibility.");
         }
 
@@ -209,7 +210,7 @@ final class PadEditor extends FrameLayout {
             ink.setColor(0xff86a9c7);
             ink.setTextSize(ui.dp(14));
             ink.setTextAlign(Paint.Align.CENTER);
-            canvas.drawText("DRAG ANY BUTTON  ·  " + (layout.overlay ? "LANDSCAPE" : "PORTRAIT"), w / 2f,
+            canvas.drawText("DRAG ANY BUTTON  ·  " + (w > h ? "LANDSCAPE" : "PORTRAIT"), w / 2f,
                     video.y + video.h / 2f, ink);
             for (int i = 0; i < COUNT; i++) if (i != selected) control(canvas, i);
             control(canvas, selected);
@@ -218,6 +219,12 @@ final class PadEditor extends FrameLayout {
         private void control(Canvas c, int index) {
             Box box = layout.controls[index];
             if (box.w == 0 || box.h == 0) return;
+            float margin = index == DPAD ? layout.stickMargin : index < KEY_END ? layout.buttonMargin : 0;
+            if (index == selected && margin > 0) {
+                float extra = Math.min(box.w, box.h) * margin;
+                ink.setColor(0x4c8bd9ff);
+                c.drawRect(box.x - extra, box.y - extra, box.right() + extra, box.bottom() + extra, ink);
+            }
             int alpha = profile().hidden[index] ? 75 : Math.round(255 * layout.opacity);
             drawArt(c, artwork[index], box.x, box.y, box.w, box.h, alpha);
             if (index == DPAD && knob != null) {

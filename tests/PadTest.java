@@ -27,7 +27,9 @@ public final class PadTest {
         testPointers(new PadLayout(760, 360, 1, true));
         testCustom();
         testPresets();
-        System.out.println("Controller layout, saved placements and multitouch tests passed.");
+        testMargins();
+        testBindingsAndAutofire();
+        System.out.println("Controller layout migration, separate hit zones, multitouch, combo masks and hold-autofire passed.");
     }
 
     private static void checkLayout(int w, int h, float density) {
@@ -51,7 +53,7 @@ public final class PadTest {
             for (int j = 0; j < i; j++) expect(!overlap(key, layout.controls[j]), "touch targets do not overlap");
             if (i == DPAD || i == MENU) continue;
             expect(layout.keyAt(centerX(key), centerY(key)) == i, "hit target matches drawing");
-            expect(bits.add(PadInput.KEY_BITS[i]), "distinct joypad bit per key");
+            expect(bits.add(layout.keyBits[i]), "distinct joypad bit per key");
             expect(layout.overlay || key.y >= layout.dockTop, "portrait buttons don't cover video");
         }
         expect(bits.equals(new HashSet<>(Arrays.asList(A, B, X, Y, L, R, Joypad.COIN, Joypad.START))), "all eight legacy inputs");
@@ -100,7 +102,7 @@ public final class PadTest {
         profile.y[COMBO] = .25f;
         profile.opacity = 65;
         profile.deadZone = 55;
-        profile.touchMargin = 20;
+        profile.stickMargin = profile.buttonMargin = 20;
         PadProfile saved = PadProfile.decode(profile.encode());
         expect(saved.encode().equals(profile.encode()), "layout round trip");
         expect(PadProfile.decode("bad").x[FIRST_ACTION] == -1, "bad preferences fall back to defaults");
@@ -138,6 +140,62 @@ public final class PadTest {
         PadLayout custom = new PadLayout(360, 760, 1, true, profile, null, false, false);
         expect(compact.controls[FIRST_ACTION].w < custom.controls[FIRST_ACTION].w && !compact.video.contains(
                 centerX(compact.controls[FIRST_ACTION]), centerY(compact.controls[FIRST_ACTION])), "compact preset fits the dock");
+    }
+
+    private static void testMargins() {
+        PadProfile profile = new PadProfile();
+        profile.x[DPAD] = .22f; profile.y[DPAD] = .4f;
+        profile.x[FIRST_ACTION] = .75f; profile.y[FIRST_ACTION] = .25f;
+        for (int j = FIRST_ACTION + 1; j < PadLayout.COIN; j++) profile.hidden[j] = true;
+        profile.buttonMargin = 24; profile.stickMargin = 9;
+        String serialized = profile.encode();
+        PadProfile migrated = PadProfile.decode(serialized.replaceFirst("^90,100,27,24,9;", "90,100,27,24;"));
+        expect(migrated.buttonMargin == 24 && migrated.stickMargin == 24, "old margin applied to both zones");
+        expect(migrated.x[FIRST_ACTION] == .75f && migrated.hidden[FIRST_ACTION + 1], "old placement and visibility retained");
+        PadProfile saved = PadProfile.decode(serialized);
+        expect(saved.stickMargin == 9 && saved.buttonMargin == 24, "margins round-trip independently");
+        saved.stickMargin = 0;
+        PadLayout buttons = new PadLayout(760, 360, 1, true, saved, null, false, false);
+        PadLayout.Box dpad = buttons.controls[DPAD], button = buttons.controls[FIRST_ACTION];
+        expect(!buttons.directionAt(dpad.x - 5, centerY(dpad)), "button margin doesn't enlarge the stick");
+        expect(buttons.keyAt(button.x - 4, centerY(button)) == FIRST_ACTION, "button margin enlarges the moved button");
+        saved.stickMargin = 24; saved.buttonMargin = 0;
+        PadLayout stick = new PadLayout(760, 360, 1, true, saved, null, false, false);
+        expect(stick.directionAt(dpad.x - 5, centerY(dpad)), "stick margin enlarges the moved stick");
+        expect(stick.keyAt(button.x - 4, centerY(button)) == -1, "stick margin doesn't enlarge buttons");
+    }
+
+    private static void testBindingsAndAutofire() {
+        int[] faces = {X | Y | Joypad.START, 0, 0, 0, 0, 0};
+        int[] combos = {A | B | RIGHT, 0, X, L | R};
+        PadBindings bindings = new PadBindings(faces, combos);
+        expect(bindings.face(0) == (X | Y) && bindings.physical(4) == bindings.face(0), "face combos share raw masks with physical keys");
+        expect(bindings.physical(5) == A && bindings.physical(10) == Joypad.COIN, "legacy defaults and Coin unchanged");
+        expect(bindings.physical(12) == (A | B) && bindings.physical(13) == 0
+                && bindings.physical(14) == X && bindings.physical(15) == (L | R), "EXT1–4 map only configured face bits");
+        faces[0] = combos[0] = 0;
+        PadProfile profile = new PadProfile();
+        profile.x[COMBO] = .2f; profile.y[COMBO] = .27f;
+        PadLayout layout = new PadLayout(360, 760, 1, true, profile, false, false, CUSTOM, 0, false, bindings);
+        PadLayout.Box moved = layout.controls[COMBO];
+        expect(layout.keyBits[FIRST_ACTION] == (X | Y) && layout.keyBits[COMBO] == (A | B), "touch and hardware share snapshotted bindings");
+        PadInput input = new PadInput();
+        expect(input.update(layout, 1, -1, new int[]{18}, new float[]{centerX(moved)}, new float[]{centerY(moved)}) == (A | B)
+                && input.pressedKeys == 1 << COMBO, "one combo presses two core buttons but animates one sprite");
+        input.clear();
+        expect(input.pressedKeys == 0, "reset physical touch hits on cancellation");
+
+        AutoFire repeat = new AutoFire();
+        int unaffected = LEFT | Joypad.COIN | X;
+        for (int n = 0; n < 25; n++) {
+            boolean pressed = n < 15 || (n - 15) % 6 < 3;
+            expect(repeat.apply(0, B | unaffected, B | A, 15, 6) == (unaffected | (pressed ? B : 0)), "delay and on/off period at frame " + n);
+        }
+        expect(repeat.apply(1, B, B, 15, 6) == B, "a new port's first tap is always pressed");
+        expect(repeat.apply(0, unaffected, B, 15, 6) == unaffected, "released button stops repeating");
+        expect(repeat.apply(0, B, B, 15, 6) == B, "repeat restarts on a new hold");
+        repeat.reset();
+        expect(repeat.apply(0, A | B, A | B, 15, 6) == (A | B), "reset starts both combo bits on");
     }
 
     private static float centerX(PadLayout.Box box) { return box.x + box.w / 2f; }

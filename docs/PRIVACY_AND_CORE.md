@@ -90,25 +90,22 @@ memory changes that already happened.
 
 ## Feature parity and intentional gaps
 
-The supplied help and UI identify IPS trees and previews, local cheats,
-States, HQx/XBRZ, controller auto/fixed modes, extra touch area, frameskip
-0–4/auto, and host/join menus for Wi-Fi and Bluetooth. The help is labeled
-v1.72, whereas the APK is v1.77; resource strings alone don't prove any
-particular driver, patch format, or protocol works on a current phone.
+See the [FBA4droid 1.77 comparison](FBA4DROID_PARITY.md) for the original evidence,
+the 0.4.0 baseline and the changes in **0.5.0**. The Recovery app remembers one
+read-only Android folder grant. It only copies selected content to private
+storage and can release the grant independently of any copy. Skin imports keep
+only allowed, re-encoded PNG frames; local game info keeps plain text only,
+not executable HTML. Old ads, telemetry, browser, updater and dynamic loading
+were not restored.
 
-| Feature | FBA Arcade 0.4.0 |
-|---|---|
-| Library, arcade and controls | Local import, art, list/grid, search/favorites/recent, metadata and title sorting, category/board filters, round or D-pad controls, portrait/landscape drag/size/visibility, auto/fixed presets, opacity/expanded hit zone, local controllers, combinations and turbo. |
-| States and snapshots | In-game save/load, library previews/rename/delete/launch. Checked current-core states bound to the primary ZIP hash, payload size/CRC and IPS variant if used. Keep parent and BIOS revisions unchanged too. |
-| IPS | Same-size standard IPS literal/RLE changes for one chip selected by size and CRC. Byte and work limits; generated one-chip override in the session cache, not a change to the original ZIP. No old multi-chip `.dat` package import or resize/IPS32. Patched saves/screenshots and battery storage are isolated. |
-| Custom cheats | Exact-set ZIP/member, INI, or pasted text. Parse and reconstruct only bounded, sequential options with CPU/address/byte triples, off by default. No includes or arbitrary raw directives sent to the core. Imported data is bound to the primary ZIP SHA-256. |
-| Display | GPU canvas selection, fullscreen portrait, render-only frameskip (0–4/auto), and genuine HQ2x/HQ3x/HQ4x. The source is [separate LGPL HQx](../android/third_party/hqx/README.md) with a bounded color cache. No xBRZ code is bundled; the xBRZ sources reviewed offered no corresponding exception for FBNeo's non-commercial license. |
-| Wi-Fi/Bluetooth | Optional [Link beta](LINK_PLAY.md) for two phones with the same APK and matching archives. Outputs are checked for desync; no foreign native state is loaded. Linux loopback and two-core checks passed; Android transport acceptance pending. Not compatible with legacy FBA4droid peers. |
-| Legacy `.fba`/Alpha states | The old help describes E680 caches for PGM/NeoGeo/CPS2; the old ELF has `FS1 ` and BurnState symbols. Supplied archives did not contain usable samples to prove exact format and core compatibility. Not accepted or converted by extension. |
-
-Digital mapping does not emulate analog trackballs or lightguns. FBNeo board
-and ROM compatibility is not the same as the two older Alpha cores. Old ads,
-telemetry, browser, updater and dynamic loading were not restored.
+Custom INI validation, current-core state format and save scopes are unchanged.
+IPS groups add same-size changes for several checked chip members; staging only
+the modified chips in a private session cache leaves the original ZIP and plain
+saves unchanged. No raw definition from a picked document is passed to the core.
+HQx is [separate LGPL HQx](../android/third_party/hqx/README.md); none of the
+reviewed xBRZ copies established a compatible license grant. Old `.romdata`,
+E680 `.fba` caches and Alpha states are not loaded. Digital mapping is not true
+analog trackball or lightgun input.
 
 The regular APK has no Android permissions or Bluetooth/network transport.
 The Link APK permits only `INTERNET`, `ACCESS_LOCAL_NETWORK`, legacy
@@ -138,7 +135,7 @@ files. The frontend has no arbitrary host-side code execution or install path.
   and payload indexes. `tools/smoke-core.sh` runs a synthetic board program
   on the unchanged pinned Linux core: video, PCM, both player inputs, DIP,
   imported cheat writes, state restore/reset, and actual changed video from an
-  IPS variant followed by an unchanged regular launch. `tools/smoke-link.sh`
+  multi-chip IPS variant followed by an unchanged regular launch. `tools/smoke-link.sh`
   drives two Link cores via the same wire protocol and verifies synchronized
   gameplay, pause and mismatch rejection. No physical Android devices were
   available; see the [device checklist](ANDROID_SMOKE.md).
@@ -166,4 +163,7 @@ The restored source no longer has the original APKs or their signing key.
 Recovery builds use `io.github.ankushui18.fbaarcade.recovery` and a new test
 certificate. They are separate installs from the originals and do not
 migrate or read the older app's private library or saves. The two Recovery
-flavors share their own ID and signer, so they replace each other.
+flavors share their own ID and signer, so they replace each other. The signed
+0.5.0 Recovery test APKs use the same signer (SHA-256
+`9a536eff83d3a9892a458927edcbb4e7209ccab339094f726c676d2ec197e1a3`) and a higher
+versionCode, so they can update 0.4.0 Recovery without uninstalling.

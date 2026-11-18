@@ -35,13 +35,13 @@ final class TouchDeck extends ViewGroup {
     private int[] ids = new int[8];
     private float[] xs = new float[8], ys = new float[8];
     private PadLayout layout;
-    private PadSkin skin;
+    private PadArt skin;
     private GameSession session;
     private boolean interactive, tracking;
     private int held;
     private final int[] pulse = new int[KEY_END + ARROW_BITS.length];
 
-    TouchDeck(Context context, PadSkin initialSkin) {
+    TouchDeck(Context context, PadArt initialSkin) {
         super(context);
         ui = new ArcadeUi(context);
         setClipChildren(false);
@@ -115,24 +115,22 @@ final class TouchDeck extends ViewGroup {
         publish();
     }
 
-    void setSkin(PadSkin next) {
+    void setSkin(PadArt next) {
         if (next == skin) return;
         clear();
         skin = next;
         dpad.setArt(next);
         for (int i = FIRST_ACTION; i < KEY_END; i++) {
-            int normal = i < COMBO ? next.buttons[i - FIRST_ACTION][0] : next.combos[i - COMBO];
-            int pressed = i < COMBO ? next.buttons[i - FIRST_ACTION][1] : next.combosPressed[i - COMBO];
-            buttons[i].setImageDrawable(buttonArt(getContext(), normal, pressed));
+            buttons[i].setImageDrawable(buttonArt(next.button(getContext(), i, false), next.button(getContext(), i, true)));
         }
-        for (TextView caption : captions) caption.setVisibility(skin.classic ? VISIBLE : GONE);
+        for (int i = 0; i < captions.length; i++) captions[i].setVisibility(skin.needsCaption(COIN + i) ? VISIBLE : GONE);
         requestLayout();
     }
 
-    static Drawable buttonArt(Context context, int normal, int pressed) {
+    static Drawable buttonArt(Drawable normal, Drawable pressed) {
         StateListDrawable states = new StateListDrawable();
-        states.addState(new int[] {android.R.attr.state_pressed}, context.getDrawable(pressed));
-        states.addState(new int[0], context.getDrawable(normal));
+        states.addState(new int[] {android.R.attr.state_pressed}, pressed);
+        states.addState(new int[0], normal);
         return states;
     }
 
@@ -171,8 +169,7 @@ final class TouchDeck extends ViewGroup {
         int mask = held | (pulsing & ((held & DIRECTIONS) == 0 ? -1 : ~DIRECTIONS));
         if (session != null) session.touch.set(mask);
         for (int i = FIRST_ACTION; i < KEY_END; i++) {
-            int bit = layout == null ? 0 : layout.keyBits[i];
-            buttons[i].setPressed(animated && bit != 0 && (mask & bit) == bit);
+            buttons[i].setPressed(animated && ((pointers.pressedKeys & (1 << i)) != 0 || pulse[i] != 0));
         }
         updateStickArt(mask);
     }
@@ -202,17 +199,20 @@ final class TouchDeck extends ViewGroup {
             ys[i] = event.getY(i);
         }
         int lifted = action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_POINTER_UP ? event.getActionIndex() : -1;
+        int oldKeys = pointers.pressedKeys;
         int next = pointers.update(layout, count, lifted, ids, xs, ys);
-        int changed = next ^ held;
-        if (changed != 0) {
-            if (haptic && (next & ~held) != 0) performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
+        int changedKeys = oldKeys ^ pointers.pressedKeys;
+        if (held != next || changedKeys != 0) {
+            if (haptic && ((next & ~held & DIRECTIONS) != 0 || (changedKeys & pointers.pressedKeys) != 0)) {
+                performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
+            }
             held = next;
             long now = SystemClock.uptimeMillis();
-            for (int i = FIRST_ACTION; i < COMBO; i++) {
-                int bit = layout.keyBits[i];
-                if ((changed & bit) == 0) continue;
-                if ((held & bit) != 0) downAt[i] = now;
-                else if (lifted >= 0 && now - downAt[i] < TAP_MS) tap(i, bit);
+            for (int i = FIRST_ACTION; i < KEY_END; i++) {
+                int key = 1 << i;
+                if ((changedKeys & key) == 0) continue;
+                if ((pointers.pressedKeys & key) != 0) downAt[i] = now;
+                else if (lifted >= 0 && now - downAt[i] < TAP_MS) tap(i, layout.keyBits[i]);
             }
             publish();
         }
@@ -257,7 +257,7 @@ final class TouchDeck extends ViewGroup {
     }
 
     private int captionHeight(int key, Box box) {
-        return skin.classic && (key == COIN || key == START) && box.w > box.h ? Math.min(ui.dp(13), box.h / 3) : 0;
+        return skin.needsCaption(key) && box.w > box.h ? Math.min(ui.dp(13), box.h / 3) : 0;
     }
 
     static void measureExactly(View view, int w, int h) {
@@ -276,10 +276,10 @@ final class TouchDeck extends ViewGroup {
 
         Dpad(Context context) { super(context); }
 
-        void setArt(PadSkin skin) {
-            for (int i = 0; i < skin.directions.length; i++) art[i] = getContext().getDrawable(skin.directions[i]);
-            ring = skin.circle == 0 ? null : getContext().getDrawable(skin.circle);
-            knob = skin.knob == 0 ? null : getContext().getDrawable(skin.knob);
+        void setArt(PadArt skin) {
+            for (int i = 0; i < art.length; i++) art[i] = skin.direction(getContext(), i);
+            ring = skin.ring(getContext());
+            knob = skin.knob(getContext());
             invalidate();
         }
 

@@ -23,6 +23,7 @@ import java.util.concurrent.locks.LockSupport;
 
 /** Runs the native core, audio and surface rendering away from the Android UI thread. */
 final class GameSession implements Runnable {
+    private static final int ORIGINAL_SIZE = 5;
     static final AudioAttributes AUDIO = new AudioAttributes.Builder()
             .setUsage(AudioAttributes.USAGE_GAME).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build();
     private static final ExecutorService WORKER = Executors.newSingleThreadExecutor(task -> new Thread(task, "arcade-core"));
@@ -44,6 +45,9 @@ final class GameSession implements Runnable {
     private final ArrayBlockingQueue<Runnable> commands = new ArrayBlockingQueue<>(8);
     private final Callbacks callbacks;
     final AtomicInteger touch = new AtomicInteger();
+    private final AtomicInteger inputReset = new AtomicInteger();
+    private final AutoFire autoFire = new AutoFire();
+    private int appliedInputReset;
     final AtomicIntegerArray keys = new AtomicIntegerArray(4);
     final AtomicIntegerArray stick = new AtomicIntegerArray(4);
     volatile int touchPort, turboMask, turboRate = 10, displayMode, frameSkip, measuredFps;
@@ -84,6 +88,7 @@ final class GameSession implements Runnable {
     void resetInputs() {
         touch.set(0);
         for (int i = 0; i < 4; i++) { keys.set(i, 0); stick.set(i, 0); }
+        inputReset.incrementAndGet();
     }
     boolean post(Runnable task) { return !stopping && commands.offer(task); }
 
@@ -119,16 +124,18 @@ final class GameSession implements Runnable {
         } finally { shot.recycle(); }
     }
 
-    private long input(long tick, double fps) {
-        int touchMask = touch.get();
-        // Turbofire only pulses the selected buttons while held; directions never repeat.
+    private long input(double fps) {
+        int reset = inputReset.get();
+        if (reset != appliedInputReset) { autoFire.reset(); appliedInputReset = reset; }
+        int touchMask = touch.get(), repeat = turboMask;
+        int delay = Math.max(1, (int) Math.round(fps / 4));
         int wave = Math.max(2, (int) Math.round(fps / Math.max(1, turboRate)));
         long combined = 0;
         int mirror = 0;
         if (mirrorHardware) for (int port = 0; port < 4; port++) mirror |= keys.get(port) | stick.get(port);
         for (int port = 0; port < 4; port++) {
             int bits = mirror | keys.get(port) | stick.get(port) | (port == touchPort ? touchMask : 0);
-            if (tick % wave >= (wave + 1) / 2) bits &= ~turboMask;
+            bits = autoFire.apply(port, bits, repeat, delay, wave);
             combined |= (long) (bits & 0xffff) << (port * 16);
         }
         return combined;
@@ -192,7 +199,7 @@ final class GameSession implements Runnable {
                 if (nextFrame == 0) nextFrame = System.nanoTime();
                 double fps = Core.fps();
                 if (!(fps >= 10 && fps <= 240)) fps = 60;
-                long pad = waiting ? 0 : input(tick, fps);
+                long pad = waiting ? 0 : input(fps);
                 if (link != null) {
                     pad = link.exchange((int) (pad >>> (16 * link.player())), waiting, checkpoint);
                     boolean other = !waiting && pad < 0;
@@ -201,6 +208,7 @@ final class GameSession implements Runnable {
                     if (stopping) break;
                 }
                 if (waiting) {
+                    autoFire.reset();
                     if (playing) { silence(audio); playing = false; }
                     nextFrame = 0;
                     measuredFps = rateFrames = 0;
@@ -317,12 +325,13 @@ final class GameSession implements Runnable {
     }
 
     private void render() {
-        if (!refreshFrame(filter)) return;
+        int mode = displayMode, scaling = mode == ORIGINAL_SIZE ? 0 : filter;
+        if (!refreshFrame(scaling)) return;
         int rawSize = Core.frameSize(), w = rawSize >>> 16, h = rawSize & 0xffff;
         int rotation = Core.rotation();
         boolean sideways = (rotation & 1) != 0;
         float aspect = gameAspect(rotation);
-        paint.setFilterBitmap(filter == 1);
+        paint.setFilterBitmap(scaling == 1);
         Canvas canvas = null;
         if (gpuActive && !gpuUnavailable) try { canvas = surface.lockHardwareCanvas(); }
         catch (IllegalStateException | UnsupportedOperationException unavailable) { gpuUnavailable = true; }
@@ -330,19 +339,20 @@ final class GameSession implements Runnable {
         if (canvas == null) return;
         try {
             canvas.drawColor(Color.BLACK);
-            int mode = displayMode;
             if (mode == 2) aspect = 4f / 3f;
             else if (mode == 3) aspect = 3f / 4f;
             float dw = Math.min(canvas.getWidth(), canvas.getHeight() * aspect), dh = dw / aspect;
             if (mode == 1) { dw = canvas.getWidth(); dh = canvas.getHeight(); }
-            else if (mode == 4) {
+            else if (mode == 4 || mode == ORIGINAL_SIZE) {
                 int rawW = sideways ? h : w, rawH = sideways ? w : h;
                 float factor = Math.min((float) canvas.getWidth() / rawW, (float) canvas.getHeight() / rawH);
-                if (factor > 1) factor = (int) factor;
+                if (factor > 1) factor = mode == ORIGINAL_SIZE ? 1 : (int) factor;
                 dw = rawW * factor; dh = rawH * factor;
             }
             float halfW = (sideways ? dh : dw) / 2, halfH = (sideways ? dw : dh) / 2;
-            canvas.translate(canvas.getWidth() / 2f, canvas.getHeight() / 2f);
+            float left = (canvas.getWidth() - dw) / 2, top = (canvas.getHeight() - dh) / 2;
+            if (mode == ORIGINAL_SIZE) { left = (int) left; top = (int) top; }
+            canvas.translate(left + dw / 2, top + dh / 2);
             canvas.rotate(-90 * rotation);
             destination.set(-halfW, -halfH, halfW, halfH);
             canvas.drawBitmap(frame, null, destination, paint);

@@ -1,0 +1,2 @@
+f50cd71b9a2f4336a3fee64a5eae072927aac8662761c2130ecbf01b81847056  fba-arcade-0.5.0-recovery-arm64-v8a-test.apk
+2731c1c2081095e16a48eda3d4390b888cffbfebf8f0adf68336807b8d46e63c  fba-arcade-0.5.0-recovery-link-arm64-v8a-test.apk

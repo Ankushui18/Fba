@@ -9,7 +9,7 @@ final class PadLayout {
             "Combo 1", "Combo 2", "Combo 3", "Combo 4", "Player", "Pause"};
     final Box[] controls = new Box[COUNT];
     final int[] keyBits = new int[KEY_END];
-    final float opacity, deadZone, hitMargin;
+    final float opacity, deadZone, buttonMargin, stickMargin;
     final Box video, title;
     final int dockTop;
     final boolean overlay;
@@ -40,14 +40,25 @@ final class PadLayout {
 
     PadLayout(int width, int height, float density, boolean showControls, PadProfile profile,
               int[] combos, boolean showPlayer, boolean editor, int mode, int descriptor, boolean fullScreen) {
+        this(width, height, density, showControls, profile, showPlayer, editor, mode, descriptor, fullScreen,
+                combos == null ? PadBindings.DEFAULT : new PadBindings(null, combos));
+    }
+
+    PadLayout(int width, int height, float density, boolean showControls, PadProfile profile,
+              boolean showPlayer, boolean editor, int mode, int descriptor, boolean fullScreen, PadBindings bindings) {
         overlay = width > height || fullScreen;
         boolean compact = mode == COMPACT && !editor;
         boolean auto = mode == AUTO && !editor && descriptor != 0;
         opacity = profile == null ? .9f : profile.opacity / 100f;
         deadZone = profile == null ? .27f : profile.deadZone / 100f;
-        hitMargin = profile == null ? 0 : profile.touchMargin / 100f;
-        System.arraycopy(PadInput.KEY_BITS, 0, keyBits, 0, PadInput.KEY_BITS.length);
-        if (combos != null) System.arraycopy(combos, 0, keyBits, COMBO, Math.min(combos.length, 4));
+        buttonMargin = profile == null ? 0 : profile.buttonMargin / 100f;
+        stickMargin = profile == null ? 0 : profile.stickMargin / 100f;
+        for (int i = FIRST_ACTION; i < COIN; i++) {
+            int mapped = bindings.face(i - FIRST_ACTION);
+            keyBits[i] = auto ? mapped & descriptor : mapped;
+        }
+        keyBits[COIN] = Joypad.COIN; keyBits[START] = Joypad.START;
+        for (int i = 0; i < PadBindings.EXTRAS; i++) keyBits[COMBO + i] = bindings.extra(i);
         int edge = Math.min(px(14, density), Math.min(width, height) / 16);
         int menuSize = Math.min(px(48, density), Math.min(width, height) / 5);
         controls[MENU] = new Box(width - edge - menuSize, edge, menuSize, menuSize);
@@ -131,12 +142,12 @@ final class PadLayout {
     int keyAt(float x, float y) {
         if (controls[MENU].contains(x, y) || controls[PLAYER].contains(x, y)) return -1;
         for (int i = KEY_END - 1; i >= FIRST_ACTION; i--) if (controls[i].contains(x, y)) return i;
-        if (hitMargin <= 0 || controls[DPAD].contains(x, y)) return -1;
+        if (buttonMargin <= 0 || controls[DPAD].contains(x, y)) return -1;
         int nearest = -1;
         float distance = Float.POSITIVE_INFINITY;
         for (int i = KEY_END - 1; i >= FIRST_ACTION; i--) {
             Box box = controls[i];
-            if (!expanded(box, x, y)) continue;
+            if (!expanded(box, x, y, buttonMargin)) continue;
             float dx = x - box.x - box.w / 2f, dy = y - box.y - box.h / 2f;
             float score = dx * dx + dy * dy;
             if (score < distance) { nearest = i; distance = score; }
@@ -145,12 +156,12 @@ final class PadLayout {
     }
 
     boolean directionAt(float x, float y) {
-        return !controls[MENU].contains(x, y) && !controls[PLAYER].contains(x, y) && expanded(controls[DPAD], x, y);
+        return !controls[MENU].contains(x, y) && !controls[PLAYER].contains(x, y) && expanded(controls[DPAD], x, y, stickMargin);
     }
 
-    private boolean expanded(Box box, float x, float y) {
+    private static boolean expanded(Box box, float x, float y, float margin) {
         if (box.w == 0 || box.h == 0) return false;
-        float extra = Math.min(box.w, box.h) * hitMargin;
+        float extra = Math.min(box.w, box.h) * margin;
         return x >= box.x - extra && x < box.right() + extra && y >= box.y - extra && y < box.bottom() + extra;
     }
 }

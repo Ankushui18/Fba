@@ -213,7 +213,7 @@ final class LinkTransport implements GameLink {
 
     private byte[] identity(GameCatalog catalog, File rom) throws IOException {
         MessageDigest hash = LocalFiles.sha256();
-        hash.update(("FBA Arcade Link 0.4.0 / deterministic FBNeo 2da48555 / " + System.getProperty("os.arch") + "\n").getBytes(StandardCharsets.US_ASCII));
+        hash.update(("FBA Arcade Link 0.5.0 / deterministic FBNeo 2da48555 / " + System.getProperty("os.arch") + "\n").getBytes(StandardCharsets.US_ASCII));
         ArrayDeque<File> next = new ArrayDeque<>();
         Set<String> seen = new HashSet<>();
         next.add(rom);

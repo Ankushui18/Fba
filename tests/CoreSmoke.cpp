@@ -83,13 +83,17 @@ static void probeBoard(const char *rom, const char *privateDir) {
     arcade::close();
     assert(!arcade::open(rom, privateDir, privateDir, true));
     playFrames(6);
-    assert(red(0) != original);  // Staged IPS override changes the running board program.
+    const unsigned patched = red(0);
+    // Both the program and palette PROM overrides must be active. Account for
+    // the core's 5-bit red quantization when it supplies a 16-bit framebuffer.
+    if (patched < 0xe8 || patched > 0xf0) std::fprintf(stderr, "Expected two-chip red near 0xee, got 0x%02x\n", patched);
+    assert(patched >= 0xe8 && patched <= 0xf0);
     arcade::close();
     assert(!arcade::open(rom, privateDir, privateDir));
     playFrames(6);
     assert(red(0) == original);  // Override is isolated even if present on disk.
     arcade::close();
-    std::puts("FBNeo IPS variant changed running video and left the plain launch untouched.");
+    std::puts("FBNeo multi-chip IPS variant changed running video and left the plain launch untouched.");
     std::puts("FBNeo hardware probe: 256x240 video, audible PCM, P2 input, DIP update, cheat memory write, save/load and reset passed.");
 }
 

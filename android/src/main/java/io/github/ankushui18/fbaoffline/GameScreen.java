@@ -2,7 +2,6 @@ package io.github.ankushui18.fbaoffline;
 
 import android.content.Context;
 import android.graphics.Color;
-import android.graphics.drawable.Drawable;
 import android.view.Gravity;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
@@ -24,7 +23,7 @@ final class GameScreen extends FrameLayout {
     private final FrameLayout menu;
     private GameSession session;
 
-    GameScreen(Context context, String name, PadSkin skin, boolean touchVisible, GameLink link, Actions actions) {
+    GameScreen(Context context, String name, PadArt skin, boolean touchVisible, GameLink link, Actions actions) {
         super(context);
         ui = new ArcadeUi(context);
         setBackgroundColor(Color.BLACK);
@@ -46,12 +45,18 @@ final class GameScreen extends FrameLayout {
         stage.loading.setVisibility(waiting ? VISIBLE : GONE);
     }
     void setInputEnabled(boolean enabled) { stage.deck.setInputEnabled(enabled && stage.controlsVisible); }
-    void setSkin(PadSkin skin) { stage.skin = skin; stage.deck.setSkin(skin); stage.playerArt(); }
+    void setSkin(PadArt skin) {
+        if (stage.skin == skin) return;
+        stage.skin = skin;
+        stage.deck.setSkin(skin);
+        stage.playerArt();
+        stage.pauseArt();
+    }
     void setFeedback(boolean animated, boolean haptic) { stage.deck.setFeedback(animated, haptic); }
     void setPlayer(int port) { stage.touchPlayer = port; stage.playerArt(); }
-    void setPad(PadProfile portrait, PadProfile landscape, int[] comboBits, boolean showPlayer, int mode, boolean fullScreen) {
+    void setPad(PadProfile portrait, PadProfile landscape, PadBindings bindings, boolean showPlayer, int mode, boolean fullScreen) {
         stage.profiles = new PadProfile[]{portrait, landscape};
-        stage.combos = comboBits;
+        stage.bindings = bindings;
         stage.showPlayer = showPlayer;
         stage.mode = mode;
         stage.fullScreen = fullScreen;
@@ -174,9 +179,9 @@ final class GameScreen extends FrameLayout {
                 postDelayed(this, 650);
             }
         };
-        private PadSkin skin;
+        private PadArt skin;
         private PadProfile[] profiles = {new PadProfile(), new PadProfile()};
-        private int[] combos = new int[4];
+        private PadBindings bindings = PadBindings.DEFAULT;
         private boolean showPlayer, fullScreen;
         private int mode;
         private int touchPlayer;
@@ -185,7 +190,7 @@ final class GameScreen extends FrameLayout {
         private float previousDensity;
         private boolean previousControls, controlsVisible;
 
-        Stage(Context context, String name, PadSkin skin, boolean showControls, Actions actions) {
+        Stage(Context context, String name, PadArt skin, boolean showControls, Actions actions) {
             super(context);
             setFocusableInTouchMode(true);
             setMotionEventSplittingEnabled(true);
@@ -214,10 +219,10 @@ final class GameScreen extends FrameLayout {
             addView(deck);
 
             pause = ui.icon(R.drawable.legacy_classic_button_pause, "Pause game", 0xaa101e30, 0, 14, 6);
-            Drawable frame = TouchDeck.buttonArt(context, R.drawable.legacy_classic_button_pause, R.drawable.legacy_classic_button_pause_p);
-            pause.setImageDrawable(frame);
+            pauseArt();
             pause.setOnClickListener(v -> actions.invoke(Action.RESUME));
-            player = ui.icon(skin.player[0], "Change touch player", Color.TRANSPARENT, 0, 10, 0);
+            player = ui.icon(R.drawable.legacy_classic_button_player, "Change touch player", Color.TRANSPARENT, 0, 10, 0);
+            playerArt();
             player.setOnClickListener(v -> actions.invoke(Action.PLAYER));
             addView(player);
             addView(pause);
@@ -228,8 +233,10 @@ final class GameScreen extends FrameLayout {
             addView(fps);
         }
 
+        void pauseArt() { pause.setImageDrawable(TouchDeck.buttonArt(skin.pause(getContext(), false), skin.pause(getContext(), true))); }
+
         void playerArt() {
-            player.setImageResource(skin.player[touchPlayer]);
+            player.setImageDrawable(skin.player(getContext(), touchPlayer));
             player.setContentDescription("Touch player " + (touchPlayer + 1) + ". Tap to change.");
         }
 
@@ -243,7 +250,8 @@ final class GameScreen extends FrameLayout {
             setMeasuredDimension(w, h);
             float density = getResources().getDisplayMetrics().density;
             if (layout == null || w != previousWidth || h != previousHeight || density != previousDensity || previousControls != controlsVisible) {
-                layout = new PadLayout(w, h, density, controlsVisible, profiles[w > h ? 1 : 0], combos, showPlayer, false, mode, session == null ? 0 : session.inputMask(touchPlayer), fullScreen);
+                layout = new PadLayout(w, h, density, controlsVisible, profiles[w > h ? 1 : 0], showPlayer, false, mode,
+                        session == null ? 0 : session.inputMask(touchPlayer), fullScreen, bindings);
                 pause.setAlpha(layout.opacity);
                 player.setAlpha(layout.opacity);
                 previousWidth = w;

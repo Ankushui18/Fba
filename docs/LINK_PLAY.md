@@ -1,11 +1,10 @@
 # FBA Arcade Link beta
 
 Use the same Link beta APK on **both** phones. For **FBA Arcade Recovery**,
-use `artifacts/fba-arcade-0.4.0-recovery-link-arm64-v8a-test.apk`; it can replace
-Recovery Offline without replacing any older FBA Arcade install. If both
-phones already have the original signed APKs, the original 0.4.0 Link beta
-can replace the original regular 0.4.0 or 0.3.0 test build. The regular APK
-contains no Bluetooth or network transport.
+use `fba-arcade-0.5.0-recovery-link-arm64-v8a-test.apk`; it can update
+0.4.0 Recovery with the same signer or replace same-version Recovery Offline.
+It doesn't replace an older non-Recovery FBA Arcade install. A 0.5.0 peer will
+not link to 0.4.0. The Offline APK contains no Bluetooth or network transport.
 
 ## Start a two-player game
 

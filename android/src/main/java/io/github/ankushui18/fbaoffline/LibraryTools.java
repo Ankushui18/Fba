@@ -8,6 +8,7 @@ import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.OpenableColumns;
+import android.text.Html;
 import android.text.InputFilter;
 import android.widget.EditText;
 import android.widget.ImageView;
@@ -18,7 +19,11 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.function.Consumer;
 
@@ -26,19 +31,21 @@ import static io.github.ankushui18.fbaoffline.ArcadeUi.*;
 
 /** Save states, IPS variants and custom cheat files are all scoped to the library row. */
 final class LibraryTools {
-    private static final int PICK_IPS = 111, PICK_CHEATS = 112, PICK_PREVIEW = 113;
+    private static final int PICK_IPS = 111, PICK_CHEATS = 112, PICK_PREVIEW = 113, PICK_NOTE = 114, PICK_IPS_FOLDER = 115;
     private final Activity activity;
     private final ArcadeUi ui;
     private final Host host;
     private final File roms, states;
     private final PatchStore patches;
     private final UserCheats cheats;
+    private final RomNotes notes;
     private Bundle pending;
 
     interface Host {
         void play(File rom, PatchStore.Entry patch, int slot);
         <T> void job(String status, Callable<T> task, Consumer<T> done);
         void note(String message);
+        void info(File rom);
     }
 
     LibraryTools(Activity activity, File roms, Bundle saved, Host host) {
@@ -50,6 +57,7 @@ final class LibraryTools {
         states = new File(data, "states");
         patches = new PatchStore(new File(data, "patches"));
         cheats = new UserCheats(new File(data, "user-cheats"));
+        notes = new RomNotes(new File(data, "rom-notes"));
         pending = saved == null ? null : saved.getBundle("game-tool-picker");
     }
 
@@ -95,14 +103,16 @@ final class LibraryTools {
         LinearLayout content = ui.column();
         content.setPadding(ui.dp(14), ui.dp(4), ui.dp(14), ui.dp(6));
         scroll.addView(content);
-        content.addView(ui.text("Launch a separate patched variant. The original ZIP and its saves stay unchanged.", 14, MUTED, false));
+        content.addView(ui.text("Play saved variants or apply several patches together. The original ZIP and its saves stay unchanged.", 14, MUTED, false));
         if (entries.isEmpty()) {
             ui.space(content, 9);
-            content.addView(ui.text("No patches yet. To start, import a standard .ips for one ROM chip.", 14, INK, false));
+            content.addView(ui.text("No patches yet. Add an .ips for one chip or browse a legacy .dat folder.", 14, INK, false));
         }
-        AlertDialog dialog = new AlertDialog.Builder(activity).setTitle("IPS patches · " + rom.getName())
-                .setView(scroll).setPositiveButton("Import IPS", (d, w) -> pickTarget(rom))
-                .setNegativeButton("Close", null).create();
+        AlertDialog.Builder builder = new AlertDialog.Builder(activity).setTitle("IPS patches · " + rom.getName())
+                .setView(scroll).setPositiveButton("Add patches", (d, w) -> patchImportChoices(rom))
+                .setNegativeButton("Close", null);
+        if (entries.size() > 1) builder.setNeutralButton("Apply selected", (d, w) -> selectPatches(rom, entries));
+        AlertDialog dialog = builder.create();
         for (PatchStore.Entry entry : entries) {
             ui.space(content, 6);
             LinearLayout row = ui.row();
@@ -113,7 +123,7 @@ final class LibraryTools {
             row.addView(preview, new LinearLayout.LayoutParams(ui.dp(64), ui.dp(47)));
             LinearLayout labels = ui.column();
             labels.addView(ui.text(entry.title, 15, INK, true));
-            labels.addView(ui.text(entry.chip.detail(), 12, MUTED, false));
+            labels.addView(ui.text(entry.detail(), 12, MUTED, false));
             LinearLayout.LayoutParams caption = new LinearLayout.LayoutParams(0, -2, 1);
             caption.setMarginStart(ui.dp(9));
             row.addView(labels, caption);
@@ -126,10 +136,13 @@ final class LibraryTools {
 
     private void patchActions(File rom, PatchStore.Entry patch) {
         new AlertDialog.Builder(activity).setTitle(patch.title).setItems(
-                new String[]{"Play patched game", "Save states for this patch", "Choose preview image", "Remove patch"}, (d, i) -> {
+                new String[]{"Play patched game", "Save states for this patch", "Choose preview image", "Patch targets", "Remove patch"}, (d, i) -> {
                     if (i == 0) host.play(rom, patch, 0);
                     else if (i == 1) states(rom, patch);
                     else if (i == 2) pick(rom, PICK_PREVIEW, patch.id, "image/*");
+                    else if (i == 3) new AlertDialog.Builder(activity).setTitle("Patched chips · apply order")
+                            .setItems(patch.targets.stream().map(PatchStore.Chip::detail).toArray(String[]::new), null)
+                            .setPositiveButton("Back", (x, y) -> patchActions(rom, patch)).show();
                     else new AlertDialog.Builder(activity).setTitle("Remove this patch?")
                                 .setMessage("The ROM and save files are kept. Re-import the same patch to access its own saves again.")
                                 .setNegativeButton("Cancel", null).setPositiveButton("Remove", (x, y) ->
@@ -137,6 +150,102 @@ final class LibraryTools {
                                             host.note("Patch removed."); ips(rom);
                                         })).show();
                 }).setNegativeButton("Back", (d, w) -> ips(rom)).show();
+    }
+
+    private void patchImportChoices(File rom) {
+        new AlertDialog.Builder(activity).setTitle("Add patches")
+                .setItems(new String[]{"Import one .ips file", "Browse legacy IPS .dat folder"}, (d, i) -> {
+                    if (i == 0) pickTarget(rom);
+                    else new AlertDialog.Builder(activity).setTitle("Choose a legacy IPS folder")
+                            .setMessage("Select the game's folder with its .dat definitions and .ips files (usually .ips/"
+                                    + GameCatalog.setName(rom.getName()) + "). If Android hides it, copy the game folder into Documents first.")
+                            .setNegativeButton("Back", (x, y) -> patchImportChoices(rom))
+                            .setPositiveButton("Choose folder", (x, y) -> pick(rom, PICK_IPS_FOLDER, "", null)).show();
+                }).setNegativeButton("Back", (d, w) -> ips(rom)).show();
+    }
+
+    private void selectPatches(File rom, List<PatchStore.Entry> entries) {
+        String[] labels = entries.stream().map(e -> e.title + " · " + e.detail()).toArray(String[]::new);
+        boolean[] selected = new boolean[entries.size()];
+        new AlertDialog.Builder(activity).setTitle("Apply selected IPS")
+                .setMultiChoiceItems(labels, selected, (d, n, checked) -> selected[n] = checked)
+                .setNegativeButton("Back", (d, w) -> ips(rom)).setPositiveButton("Continue", (d, w) -> {
+                    List<PatchStore.Entry> stack = new ArrayList<>();
+                    for (int i = 0; i < selected.length; i++) if (selected[i]) stack.add(entries.get(i));
+                    if (stack.isEmpty()) { ips(rom); return; }
+                    if (stack.size() == 1) { patchActions(rom, stack.get(0)); return; }
+                    int count = stack.stream().mapToInt(e -> e.targets.size()).sum();
+                    if (count > PatchStore.MAX_PARTS) {
+                        new AlertDialog.Builder(activity).setTitle("Too many IPS files")
+                                .setMessage("Choose at most " + PatchStore.MAX_PARTS + " IPS files in total across the selected variants.")
+                                .setPositiveButton("Back", (x, y) -> selectPatches(rom, entries)).show();
+                        return;
+                    }
+                    String[] names = stack.stream().map(e -> e.title).toArray(String[]::new);
+                    new AlertDialog.Builder(activity).setTitle("Play combined variant?")
+                            .setMessage(String.join(" → ", names) + "\n\nApplied in this order. For overlapping writes, the later patch wins. The combined variant has its own save slots and preview.")
+                            .setNegativeButton("Back", (x, y) -> selectPatches(rom, entries))
+                            .setPositiveButton("Save & play", (x, y) -> host.job("Combining IPS patches…",
+                                    () -> patches.combine(rom, String.join(" + ", names), stack), group -> host.play(rom, group, 0))).show();
+                }).show();
+    }
+
+    private void browseLegacyPatches(File rom, Uri uri) {
+        String set = GameCatalog.setName(rom.getName());
+        host.job("Reading legacy IPS folder…", () -> {
+            DocumentFolder tree = new DocumentFolder(activity.getContentResolver(), uri);
+            DocumentFolder.Listing listing = tree.list(tree.root, 256, e -> e.folder ? e.name.equalsIgnoreCase(set) : patchFile(e.name));
+            if (listing.limited) throw new IOException("Choose a smaller folder containing the IPS pack for " + set + ".");
+            for (DocumentFolder.Entry e : listing.entries) if (e.folder) {
+                listing = tree.list(e.id, 256, f -> !f.folder && patchFile(f.name));
+                if (listing.limited) throw new IOException("This IPS folder contains too many files.");
+                break;
+            }
+            Map<String, DocumentFolder.Entry> files = new LinkedHashMap<>();
+            List<DocumentFolder.Entry> definitions = new ArrayList<>();
+            for (DocumentFolder.Entry entry : listing.entries) {
+                String key = entry.name.toLowerCase(Locale.ROOT);
+                if (entry.folder) continue;
+                if (files.putIfAbsent(key, entry) != null) throw new IOException("Duplicate filename in the IPS pack: " + entry.label());
+                if (key.endsWith(".dat")) definitions.add(entry);
+            }
+            if (definitions.isEmpty()) throw new IOException("No IPS .dat definitions found. Choose the ROM's patch folder, not the .romdata folder.");
+            return new LegacyPatchFolder(tree, files, definitions);
+        }, folder -> new AlertDialog.Builder(activity).setTitle("IPS definitions · " + set)
+                .setItems(folder.definitions.stream().map(DocumentFolder.Entry::label).toArray(String[]::new), (d, which) ->
+                        host.job("Validating legacy IPS definition…", () -> importLegacyPatch(rom, set, folder, which),
+                                added -> { host.note("Patch saved: " + added.title); ips(rom); }))
+                .setNegativeButton("Back", (d, w) -> ips(rom)).show());
+    }
+
+    private PatchStore.Entry importLegacyPatch(File rom, String set, LegacyPatchFolder folder, int which) throws IOException {
+        DocumentFolder.Entry definition = folder.definitions.get(which);
+        byte[] manifest;
+        try (InputStream in = open(folder, definition)) { manifest = LocalFiles.read(in, LegacyIps.MAX_DAT); }
+        List<PatchStore.Part> parts = LegacyIps.load(set, manifest, GameCatalog.patchTargets(activity, rom), name -> {
+            DocumentFolder.Entry file = folder.files.get(name);
+            if (file == null) throw new IOException("Missing " + name + " in this IPS folder.");
+            return open(folder, file);
+        });
+        return patches.add(rom, definition.name, parts);
+    }
+
+    private InputStream open(LegacyPatchFolder folder, DocumentFolder.Entry file) throws IOException {
+        return activity.getContentResolver().openInputStream(folder.tree.uri(file.id));
+    }
+
+    private static boolean patchFile(String name) {
+        String key = name.toLowerCase(Locale.ROOT);
+        return key.endsWith(".dat") || key.endsWith(".ips");
+    }
+
+    private static final class LegacyPatchFolder {
+        final DocumentFolder tree;
+        final Map<String, DocumentFolder.Entry> files;
+        final List<DocumentFolder.Entry> definitions;
+        LegacyPatchFolder(DocumentFolder tree, Map<String, DocumentFolder.Entry> files, List<DocumentFolder.Entry> definitions) {
+            this.tree = tree; this.files = files; this.definitions = definitions;
+        }
     }
 
     private void pickTarget(File rom) {
@@ -151,6 +260,23 @@ final class LibraryTools {
             new AlertDialog.Builder(activity).setTitle("Which chip does this IPS target?").setItems(names,
                     (d, i) -> pick(rom, PICK_IPS, names[i], "*/*")).setNegativeButton("Cancel", null).show();
         });
+    }
+
+    String gameNote(File rom) {
+        try { return notes.read(rom); }
+        catch (IOException unavailable) { return ""; } // A missing/damaged note must not hide game info.
+    }
+
+    void noteActions(File rom, boolean existing) {
+        AlertDialog.Builder dialog = new AlertDialog.Builder(activity).setTitle("Local note · " + rom.getName())
+                .setMessage("Import a .htm, .html or .txt note, including old .rominfo files. Only text is kept. Links, images and scripts aren't opened.")
+                .setPositiveButton(existing ? "Replace file" : "Import file", (d, w) -> pick(rom, PICK_NOTE, "", "*/*"))
+                .setNegativeButton("Back", (d, w) -> host.info(rom));
+        if (existing) dialog.setNeutralButton("Remove", (d, w) -> new AlertDialog.Builder(activity)
+                .setTitle("Remove local note?").setMessage("The original note and game data stay unchanged.")
+                .setNegativeButton("Cancel", (x, y) -> noteActions(rom, true)).setPositiveButton("Remove", (x, y) ->
+                        host.job("Removing local note…", () -> { notes.remove(rom); return rom; }, host::info)).show());
+        dialog.show();
     }
 
     void cheatFiles(File rom) {
@@ -196,8 +322,9 @@ final class LibraryTools {
         choice.putInt("request", request);
         pending = choice;
         try {
-            activity.startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).setType(mime).addCategory(Intent.CATEGORY_OPENABLE)
-                    .putExtra(Intent.EXTRA_LOCAL_ONLY, true).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), request);
+            Intent picker = request == PICK_IPS_FOLDER ? new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
+                    : new Intent(Intent.ACTION_OPEN_DOCUMENT).setType(mime).addCategory(Intent.CATEGORY_OPENABLE);
+            activity.startActivityForResult(picker.putExtra(Intent.EXTRA_LOCAL_ONLY, true).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), request);
         } catch (ActivityNotFoundException unavailable) {
             pending = null;
             host.note("No system file picker is available.");
@@ -205,7 +332,7 @@ final class LibraryTools {
     }
 
     boolean result(int request, int result, Intent data) {
-        if (request != PICK_IPS && request != PICK_CHEATS && request != PICK_PREVIEW) return false;
+        if (request != PICK_IPS && request != PICK_CHEATS && request != PICK_PREVIEW && request != PICK_NOTE && request != PICK_IPS_FOLDER) return false;
         Bundle choice = pending;
         pending = null;
         Uri uri = data == null ? null : data.getData();
@@ -216,7 +343,19 @@ final class LibraryTools {
         catch (IOException invalid) { return true; }
         if (!RomStore.isArchive(rom)) { host.note("This ROM ZIP is no longer in the library."); return true; }
         String target = choice.getString("target", "");
-        if (request == PICK_CHEATS) {
+        if (request == PICK_IPS_FOLDER) {
+            browseLegacyPatches(rom, uri);
+        } else if (request == PICK_NOTE) {
+            host.job("Copying game note…", () -> {
+                boolean html = RomNotes.isHtml(displayName(uri));
+                try (InputStream in = activity.getContentResolver().openInputStream(uri)) {
+                    String text = RomNotes.decode(LocalFiles.read(in, RomNotes.MAX_SOURCE_BYTES));
+                    if (html) text = Html.fromHtml(RomNotes.htmlBody(text), Html.FROM_HTML_MODE_COMPACT).toString().replace("\ufffc", "");
+                    notes.write(rom, text);
+                }
+                return rom;
+            }, host::info);
+        } else if (request == PICK_CHEATS) {
             host.job("Validating custom cheats…", () -> {
                 try (InputStream in = activity.getContentResolver().openInputStream(uri)) {
                     return cheats.install(rom, displayName(uri), in, activity.getCacheDir());

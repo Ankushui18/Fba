@@ -42,7 +42,7 @@ import static io.github.ankushui18.fbaoffline.ArcadeUi.*;
 final class LibraryScreen extends LinearLayout {
     interface Actions {
         void importZips();
-        void importFolder();
+        void browseFolder();
         void settings();
         void play(File file);
         void options(View anchor, File file);
@@ -202,12 +202,12 @@ final class LibraryScreen extends LinearLayout {
         ui.space(filesPanel, 5);
         filesPanel.addView(ui.text("Add games from a device folder", 20, INK, true));
         ui.space(filesPanel, 6);
-        filesPanel.addView(ui.text("Choose ZIP archives or a folder. Keep the original FBNeo set names and include any required parent or BIOS ZIPs.", 14, MUTED, false));
+        filesPanel.addView(ui.text("Pick ZIPs or browse a remembered device folder. Keep the original FBNeo set names and include required parent or BIOS ZIPs.", 14, MUTED, false));
         LinearLayout importOptions = ui.row();
         add = ui.button("Import ZIPs", BLUE, WHITE, 10);
         add.setOnClickListener(v -> actions.importZips());
-        folder = ui.button("Choose folder", LIGHT_BLUE, NAVY, 10);
-        folder.setOnClickListener(v -> actions.importFolder());
+        folder = ui.button("Browse folder", LIGHT_BLUE, NAVY, 10);
+        folder.setOnClickListener(v -> actions.browseFolder());
         importOptions.addView(add, new LayoutParams(0, ui.dp(48), 1));
         LayoutParams fp = new LayoutParams(0, ui.dp(48), 1);
         fp.setMarginStart(ui.dp(7));
