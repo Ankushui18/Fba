@@ -4,30 +4,26 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.ClipData;
 import android.content.Intent;
-import android.content.res.ColorStateList;
+import android.content.SharedPreferences;
 import android.database.Cursor;
-import android.graphics.Canvas;
 import android.graphics.Color;
-import android.graphics.Paint;
-import android.graphics.Typeface;
-import android.graphics.drawable.GradientDrawable;
-import android.graphics.drawable.RippleDrawable;
+import android.graphics.Insets;
 import android.media.AudioFocusRequest;
 import android.media.AudioManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.OpenableColumns;
-import android.view.Gravity;
+import android.text.format.Formatter;
+import android.view.DisplayCutout;
 import android.view.InputDevice;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
-import android.view.SurfaceView;
 import android.view.View;
+import android.view.Window;
 import android.view.WindowInsets;
+import android.view.WindowInsetsController;
 import android.view.WindowManager;
-import android.widget.Button;
-import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.PopupMenu;
 import android.widget.ScrollView;
@@ -42,32 +38,35 @@ import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import static io.github.ankushui18.fbaoffline.GameSession.*;
+import static io.github.ankushui18.fbaoffline.Joypad.*;
 
 public final class MainActivity extends Activity implements GameSession.Callbacks {
-    private static final int PICK_ZIPS = 101, MAX_BATCH = 24;
-    private static final int BG = 0xff101318, PANEL = 0xff1b2129, EDGE = 0xff34424c;
-    private static final int TEXT = 0xffeef5f3, DIM = 0xffaebec5, MINT = 0xff73f2bd, AMBER = 0xfff8c275;
-    private static final int DIRECTIONS = UP | DOWN | LEFT | RIGHT;
+    private static final int PICK_ZIPS = 101, MAX_BATCH = 24, HISTORY_LIMIT = 24;
+    private static final String RECENT_FILES = "recent_roms";
     private final ExecutorService importer = Executors.newSingleThreadExecutor(task -> new Thread(task, "rom-import"));
     private File roms, systemDir, saveDir;
     private GameSession game;
-    private boolean foreground, importing, muted;
+    private GameScreen player;
+    private LibraryScreen library;
+    private boolean foreground, importing, muted, touchVisible, loaded;
+    private PadSkin skin;
+    private SharedPreferences settings;
     private AudioManager audio;
     private AudioFocusRequest focusRequest;
-    private TextView loading;
 
     @Override protected void onCreate(Bundle saved) {
         super.onCreate(saved);
         if (Build.VERSION.SDK_INT >= 30) getWindow().setDecorFitsSystemWindows(false);
-        getWindow().setStatusBarColor(BG);
-        getWindow().setNavigationBarColor(BG);
+        if (Build.VERSION.SDK_INT >= 29) getWindow().setNavigationBarContrastEnforced(false);
         if (Build.VERSION.SDK_INT >= 33) {
             getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
                     OnBackInvokedDispatcher.PRIORITY_DEFAULT, this::goBack);
@@ -77,21 +76,53 @@ public final class MainActivity extends Activity implements GameSession.Callback
         systemDir = new File(privateData, "system");
         saveDir = new File(privateData, "saves");
         audio = getSystemService(AudioManager.class);
+        settings = getSharedPreferences("arcade_ui", MODE_PRIVATE);
+        skin = PadSkin.CLASSIC.name().equals(settings.getString("skin", "")) ? PadSkin.CLASSIC : PadSkin.CHROME;
+        muted = settings.getBoolean("muted", false);
+        touchVisible = settings.getBoolean("touch_visible", true);
+        library = createLibrary();
         showLibrary(null);
+    }
+
+    private LibraryScreen createLibrary() {
+        LibraryScreen screen = new LibraryScreen(this, skin, new LibraryScreen.Actions() {
+            @Override public void importZips() { chooseZips(); }
+            @Override public void settings() { showSkinPicker(); }
+            @Override public void play(File file) { MainActivity.this.play(file); }
+            @Override public void options(View anchor, File file) { romOptions(anchor, file); }
+        });
+        screen.setOnApplyWindowInsetsListener((view, insets) -> {
+            if (Build.VERSION.SDK_INT >= 30) {
+                Insets safe = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout() | WindowInsets.Type.ime());
+                screen.setInsets(safe.left, safe.top, safe.right, safe.bottom);
+            }
+            return insets;
+        });
+        return screen;
     }
 
     @Override protected void onResume() {
         super.onResume();
         foreground = true;
         if (game != null) game.foreground = true;
+        updateTouch();
         syncAudioFocus();
     }
 
     @Override protected void onPause() {
         foreground = false;
         if (game != null) { game.foreground = false; game.resetInputs(); }
+        updateTouch();
         syncAudioFocus();
         super.onPause();
+    }
+
+    @Override public void onWindowFocusChanged(boolean focused) {
+        super.onWindowFocusChanged(focused);
+        if (game == null) return;
+        if (focused) applySystemBars();
+        else game.resetInputs();
+        updateTouch();
     }
 
     @Override protected void onDestroy() {
@@ -104,133 +135,102 @@ public final class MainActivity extends Activity implements GameSession.Callback
     @Override public void onBackPressed() { goBack(); }
 
     private void goBack() {
-        if (game != null) closeGame();
+        if (game != null) togglePause();
         else finish();
     }
 
-    private LinearLayout page() {
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(BG);
-        root.setOnApplyWindowInsetsListener((view, insets) -> {
-            if (Build.VERSION.SDK_INT >= 30) {
-                android.graphics.Insets i = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
-                view.setPadding(i.left, i.top, i.right, i.bottom);
-            } else {
-                // Before API 30 the decor already fits the system windows.
-                view.setPadding(0, 0, 0, 0);
+    private void applySystemBars() {
+        Window window = getWindow();
+        boolean playing = game != null;
+        window.setStatusBarColor(playing ? Color.BLACK : ArcadeUi.NAVY);
+        window.setNavigationBarColor(playing ? Color.BLACK : ArcadeUi.PAGE);
+        window.setSoftInputMode(playing ? WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
+                : WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+        if (Build.VERSION.SDK_INT >= 28) {
+            WindowManager.LayoutParams attrs = window.getAttributes();
+            int cutout = playing || Build.VERSION.SDK_INT >= 30 ? WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                    : WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT;
+            if (attrs.layoutInDisplayCutoutMode != cutout) {
+                attrs.layoutInDisplayCutoutMode = cutout;
+                window.setAttributes(attrs);
             }
-            return insets;
-        });
-        return root;
+        }
+        if (Build.VERSION.SDK_INT >= 30) {
+            WindowInsetsController controller = window.getInsetsController();
+            if (controller != null) {
+                controller.setSystemBarsAppearance(playing ? 0 : WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS,
+                        WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS);
+                if (playing) {
+                    controller.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                    controller.hide(WindowInsets.Type.systemBars());
+                } else controller.show(WindowInsets.Type.systemBars());
+            }
+        } else {
+            window.getDecorView().setSystemUiVisibility(playing ? View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                    | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                    | View.SYSTEM_UI_FLAG_LAYOUT_STABLE : View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
+        }
     }
 
     private void showLibrary(String note) {
-        LinearLayout root = page();
-        ScrollView scroll = new ScrollView(this);
-        scroll.setFillViewport(true);
-        scroll.setClipToPadding(false);
-        root.addView(scroll, new LinearLayout.LayoutParams(-1, -1));
-        LinearLayout content = new LinearLayout(this);
-        content.setOrientation(LinearLayout.VERTICAL);
-        content.setPadding(dp(20), dp(14), dp(20), dp(28));
-        scroll.addView(content);
-
-        LinearLayout bar = row();
-        TextView brand = label("FBA / OFFLINE", 13, MINT, true);
-        brand.setLetterSpacing(0.16f);
-        bar.addView(brand, new LinearLayout.LayoutParams(0, -2, 1));
-        Button guide = button("Guide", PANEL, TEXT);
-        guide.setOnClickListener(v -> showGuide());
-        bar.addView(guide, new LinearLayout.LayoutParams(dp(82), dp(48)));
-        content.addView(bar);
-
-        LinearLayout hero = new LinearLayout(this);
-        hero.setOrientation(LinearLayout.VERTICAL);
-        hero.setPadding(dp(20), dp(20), dp(20), dp(20));
-        hero.setBackground(surface(0xff192b2e, 0xff31524c, 22));
-        gap(content, 16);
-        content.addView(hero);
-        TextView tagline = label("LOCAL ARCADE  /  FBNEO", 11, MINT, true);
-        tagline.setLetterSpacing(0.12f);
-        hero.addView(tagline);
-        gap(hero, 8);
-        hero.addView(label("Your arcade, offline.", 31, TEXT, true));
-        gap(hero, 6);
-        hero.addView(label("Import ROM sets you own. No accounts, ads, or network access.", 15, DIM, false));
-        gap(hero, 18);
-        Button add = button(importing ? "Importing…" : "+  Import ZIP", MINT, BG);
-        add.setEnabled(!importing);
-        add.setOnClickListener(v -> chooseZips());
-        hero.addView(add, new LinearLayout.LayoutParams(-1, dp(52)));
-
-        if (note != null) {
-            gap(content, 14);
-            TextView notice = label(note, 14, AMBER, false);
-            notice.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
-            content.addView(notice);
+        File[] files = roms.listFiles(RomStore::isArchive);
+        List<File> all = Collections.emptyList();
+        if (files != null) {
+            Arrays.sort(files, Comparator.comparing(File::getName));
+            all = Arrays.asList(files);
         }
-
-        File[] entries = roms.listFiles(RomStore::isArchive);
-        if (entries == null) entries = new File[0];
-        Arrays.sort(entries, Comparator.comparing(File::getName));
-        gap(content, 24);
-        LinearLayout heading = row();
-        heading.addView(label("Your library", 21, TEXT, true), new LinearLayout.LayoutParams(0, -2, 1));
-        heading.addView(label(entries.length + (entries.length == 1 ? " ZIP" : " ZIPs"), 13, DIM, false));
-        content.addView(heading);
-        gap(content, 10);
-        if (entries.length == 0) {
-            TextView empty = label("No ROMs yet\n\nChoose a local FBNeo-compatible ZIP and keep its original set name. If a game needs a parent ROM or BIOS, import that ZIP too.", 15, DIM, false);
-            empty.setPadding(dp(18), dp(18), dp(18), dp(18));
-            empty.setBackground(surface(PANEL, EDGE, 16));
-            content.addView(empty);
-        } else {
-            for (File file : entries) addRomRow(content, file);
+        Map<String, File> byName = new HashMap<>();
+        for (File file : all) byName.put(file.getName(), file);
+        List<File> recent = new ArrayList<>();
+        for (String name : settings.getString(RECENT_FILES, "").split("\n")) {
+            File file = byName.get(name);
+            if (file != null) recent.add(file);
         }
-        gap(content, 14);
-        TextView footer = label("Private storage · FinalBurn Neo 1.0.0.03", 12, DIM, false);
-        content.addView(footer);
-        setContentView(root);
-        root.requestApplyInsets();
+        library.show(all, recent, importing, note);
+        if (library.getParent() == null) {
+            setContentView(library);
+            applySystemBars();
+            library.requestFocus();
+            library.requestApplyInsets();
+        }
     }
 
-    private void addRomRow(LinearLayout content, File file) {
-        LinearLayout item = row();
-        item.setBackground(surface(PANEL, EDGE, 14));
-        item.setPadding(dp(12), dp(6), dp(6), dp(6));
-        TextView name = label(file.getName(), 16, TEXT, true);
-        name.setSingleLine(true);
-        name.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        item.addView(name, new LinearLayout.LayoutParams(0, -2, 1));
-        Button play = button("Play", 0xff25463e, MINT);
-        play.setContentDescription("Play " + file.getName());
-        play.setEnabled(!importing);
-        play.setOnClickListener(v -> play(file));
-        item.addView(play, new LinearLayout.LayoutParams(dp(64), dp(48)));
-        Button more = button("⋮", PANEL, DIM);
-        more.setContentDescription("Options for " + file.getName());
-        more.setEnabled(!importing);
-        more.setOnClickListener(v -> {
-            PopupMenu menu = new PopupMenu(this, more);
-            menu.getMenu().add("Remove local copy");
-            menu.setOnMenuItemClickListener(m -> {
+    private void rememberPlayed(String name) {
+        LinkedHashSet<String> latest = new LinkedHashSet<>();
+        latest.add(name);
+        for (String previous : settings.getString(RECENT_FILES, "").split("\n")) {
+            if (latest.size() == HISTORY_LIMIT) break;
+            if (!previous.isEmpty()) latest.add(previous);
+        }
+        settings.edit().putString(RECENT_FILES, String.join("\n", latest)).apply();
+    }
+
+    private void romOptions(View anchor, File file) {
+        if (importing || game != null) return;
+        PopupMenu options = new PopupMenu(this, anchor);
+        options.getMenu().add(0, 1, 0, "ROM details");
+        options.getMenu().add(0, 2, 1, "Remove local copy");
+        options.setOnMenuItemClickListener(item -> {
+            if (item.getItemId() == 1) {
+                new AlertDialog.Builder(this).setTitle(file.getName())
+                        .setMessage("Local ROM archive · " + Formatter.formatFileSize(this, file.length())
+                                + "\n\nStored privately on this device. The original file is unchanged.")
+                        .setPositiveButton("Close", null).show();
+            } else if (item.getItemId() == 2) {
                 new AlertDialog.Builder(this).setTitle("Remove " + file.getName() + "?")
                         .setMessage("The original file you picked and local game saves are not deleted.")
                         .setNegativeButton("Cancel", null)
                         .setPositiveButton("Remove", (d, w) -> showLibrary(file.delete() ? "Local copy removed." : "Couldn't remove this ZIP."))
                         .show();
-                return true;
-            });
-            menu.show();
+            }
+            return true;
         });
-        item.addView(more, new LinearLayout.LayoutParams(dp(48), dp(48)));
-        content.addView(item);
-        gap(content, 8);
+        options.show();
     }
 
     private void chooseZips() {
         if (importing || game != null) return;
+        library.hideSearchKeyboard();
         Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT)
                 .setType("*/*").addCategory(Intent.CATEGORY_OPENABLE)
                 .putExtra(Intent.EXTRA_LOCAL_ONLY, true).putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
@@ -301,60 +301,65 @@ public final class MainActivity extends Activity implements GameSession.Callback
             showLibrary("Couldn't create private storage for the emulator.");
             return;
         }
-        LinearLayout root = page();
-        LinearLayout bar = row();
-        bar.setPadding(dp(6), 0, dp(6), 0);
-        Button back = button("‹ Library", BG, MINT);
-        back.setOnClickListener(v -> closeGame());
-        bar.addView(back, new LinearLayout.LayoutParams(dp(86), dp(48)));
-        TextView title = label(file.getName(), 15, TEXT, true);
-        title.setSingleLine(true);
-        title.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        bar.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
-        Button pause = button("Pause", PANEL, TEXT);
-        Button sound = button(muted ? "Muted" : "Sound", PANEL, TEXT);
-        bar.addView(pause, new LinearLayout.LayoutParams(dp(65), dp(48)));
-        bar.addView(sound, new LinearLayout.LayoutParams(dp(65), dp(48)));
-        root.addView(bar);
-
-        FrameLayout display = new FrameLayout(this);
-        display.setBackgroundColor(Color.BLACK);
-        SurfaceView pixels = new SurfaceView(this);
-        display.addView(pixels, new FrameLayout.LayoutParams(-1, -1));
-        loading = label("Loading FBNeo…", 15, DIM, true);
-        loading.setGravity(Gravity.CENTER);
-        display.addView(loading, new FrameLayout.LayoutParams(-1, -1));
-        root.addView(display, new LinearLayout.LayoutParams(-1, 0, 1));
-
-        GameSession session = new GameSession(pixels.getHolder(), file, systemDir, saveDir, this);
+        GameScreen screen = new GameScreen(this, file.getName(), skin, touchVisible, muted, new GameScreen.Actions() {
+            @Override public void togglePause() { MainActivity.this.togglePause(); }
+            @Override public void toggleSound() {
+                muted = !muted;
+                settings.edit().putBoolean("muted", muted).apply();
+                if (player != null) player.setMuted(muted);
+                syncAudioFocus();
+            }
+            @Override public void chooseSkin() { showSkinPicker(); }
+            @Override public void toggleControls() {
+                touchVisible = !touchVisible;
+                settings.edit().putBoolean("touch_visible", touchVisible).apply();
+                if (player != null) player.setControlsVisible(touchVisible);
+                updateTouch();
+            }
+            @Override public void exit() { closeGame(); }
+        });
+        screen.setOnApplyWindowInsetsListener((view, insets) -> {
+            if (Build.VERSION.SDK_INT >= 30) {
+                Insets safe = insets.getInsets(WindowInsets.Type.displayCutout() | WindowInsets.Type.mandatorySystemGestures());
+                view.setPadding(safe.left, safe.top, safe.right, safe.bottom);
+            } else if (Build.VERSION.SDK_INT >= 28) {
+                DisplayCutout safe = insets.getDisplayCutout();
+                if (safe == null) view.setPadding(0, 0, 0, 0);
+                else view.setPadding(safe.getSafeInsetLeft(), safe.getSafeInsetTop(), safe.getSafeInsetRight(), safe.getSafeInsetBottom());
+            }
+            return insets;
+        });
+        GameSession session = new GameSession(screen.surface(), file, systemDir, saveDir, this);
         game = session;
-        root.addView(controls(session));
-        pause.setOnClickListener(v -> {
-            session.paused = !session.paused;
-            session.resetInputs();
-            pause.setText(session.paused ? "Resume" : "Pause");
-            syncAudioFocus();
-        });
-        sound.setOnClickListener(v -> {
-            muted = !muted;
-            sound.setText(muted ? "Muted" : "Sound");
-            syncAudioFocus();
-        });
-        root.setFocusableInTouchMode(true);
-        setContentView(root);
-        root.requestFocus();
-        root.requestApplyInsets();
+        player = screen;
+        screen.attach(session);
+        loaded = false;
+        setContentView(screen);
+        screen.focusStage();
+        applySystemBars();
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        screen.requestApplyInsets();
         session.foreground = foreground;
         syncAudioFocus();
         session.start();
     }
 
+    private void togglePause() {
+        if (game == null) return;
+        game.paused = !game.paused;
+        game.resetInputs();
+        player.setPaused(game.paused);
+        updateTouch();
+        syncAudioFocus();
+    }
+
     private void closeGame() {
         if (game == null) return;
         game.stop();
+        game.resetInputs();
         game = null;
-        loading = null;
+        player = null;
+        loaded = false;
         abandonFocus();
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         showLibrary(null);
@@ -362,7 +367,11 @@ public final class MainActivity extends Activity implements GameSession.Callback
 
     @Override public void ready(GameSession session) {
         runOnUiThread(() -> {
-            if (game == session && loading != null && !isDestroyed()) loading.setVisibility(View.GONE);
+            if (game != session || isFinishing() || isDestroyed()) return;
+            loaded = true;
+            rememberPlayed(session.romName());
+            player.ready();
+            updateTouch();
         });
     }
 
@@ -374,6 +383,9 @@ public final class MainActivity extends Activity implements GameSession.Callback
                     .setPositiveButton("OK", null).show();
         });
     }
+
+    private boolean canPlay() { return game != null && loaded && foreground && hasWindowFocus() && !game.paused; }
+    private void updateTouch() { if (player != null) player.setInputEnabled(canPlay()); }
 
     private void syncAudioFocus() {
         if (game == null || audio == null || muted || !foreground || game.paused) {
@@ -397,131 +409,8 @@ public final class MainActivity extends Activity implements GameSession.Callback
         focusRequest = null;
     }
 
-    private LinearLayout controls(GameSession session) {
-        LinearLayout deck = row();
-        deck.setPadding(dp(8), dp(4), dp(8), dp(4));
-        deck.setMotionEventSplittingEnabled(true);
-        deck.addView(new Dpad(session), new LinearLayout.LayoutParams(dp(104), dp(104)));
-        LinearLayout center = new LinearLayout(this);
-        center.setOrientation(LinearLayout.VERTICAL);
-        center.setGravity(Gravity.CENTER);
-        center.setMotionEventSplittingEnabled(true);
-        center.addView(control(session, "Coin", COIN, PANEL, AMBER), new LinearLayout.LayoutParams(-1, dp(48)));
-        center.addView(control(session, "Start", START, PANEL, MINT), new LinearLayout.LayoutParams(-1, dp(48)));
-        LinearLayout.LayoutParams middle = new LinearLayout.LayoutParams(0, dp(104), 1);
-        middle.setMargins(dp(6), 0, dp(6), 0);
-        deck.addView(center, middle);
-        LinearLayout right = new LinearLayout(this);
-        right.setOrientation(LinearLayout.VERTICAL);
-        right.setMotionEventSplittingEnabled(true);
-        for (int i = 0; i < 2; i++) {
-            LinearLayout line = row();
-            line.setMotionEventSplittingEnabled(true);
-            String[] labels = i == 0 ? new String[] {"X", "Y", "L"} : new String[] {"A", "B", "R"};
-            int[] masks = i == 0 ? new int[] {X, Y, L} : new int[] {A, B, R};
-            for (int j = 0; j < 3; j++) {
-                LinearLayout.LayoutParams key = new LinearLayout.LayoutParams(dp(48), dp(48));
-                key.setMargins(dp(2), dp(2), 0, 0);
-                line.addView(control(session, labels[j], masks[j], 0xff25463e, MINT), key);
-            }
-            right.addView(line);
-        }
-        deck.addView(right, new LinearLayout.LayoutParams(-2, -2));
-        return deck;
-    }
-
-    private Button control(GameSession session, String text, int mask, int bg, int ink) {
-        Button b = button(text, bg, ink);
-        b.setFocusable(false);
-        Runnable release = () -> session.touch.getAndUpdate(value -> value & ~mask);
-        b.setOnClickListener(v -> { // Accessibility activation also produces a short press.
-            b.removeCallbacks(release);
-            session.touch.getAndUpdate(value -> value | mask);
-            b.postDelayed(release, 55);
-        });
-        b.setOnTouchListener((v, event) -> {
-            switch (event.getActionMasked()) {
-                case MotionEvent.ACTION_DOWN:
-                    b.removeCallbacks(release);
-                    b.setPressed(true);
-                    session.touch.getAndUpdate(value -> value | mask);
-                    break;
-                case MotionEvent.ACTION_UP:
-                    b.setPressed(false);
-                    if (event.getEventTime() - event.getDownTime() < 28) b.performClick();
-                    else release.run();
-                    break;
-                case MotionEvent.ACTION_CANCEL:
-                    b.setPressed(false);
-                    release.run();
-                    break;
-                default:
-                    break;
-            }
-            return true;
-        });
-        return b;
-    }
-
-    private final class Dpad extends View {
-        private final GameSession session;
-        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private int pointer = -1;
-
-        Dpad(GameSession session) {
-            super(MainActivity.this);
-            this.session = session;
-            setContentDescription("Directional pad. Slide your thumb in a direction.");
-        }
-
-        @Override protected void onDraw(Canvas c) {
-            float w = getWidth(), h = getHeight(), x = w / 2, y = h / 2, r = Math.min(w, h) / 6;
-            paint.setColor(EDGE);
-            c.drawRoundRect(0, y - r, w, y + r, dp(9), dp(9), paint);
-            c.drawRoundRect(x - r, 0, x + r, h, dp(9), dp(9), paint);
-            paint.setTypeface(Typeface.DEFAULT_BOLD);
-            paint.setTextAlign(Paint.Align.CENTER);
-            paint.setTextSize(dp(17));
-            int dirs = session.touch.get();
-            arrow(c, "▲", x, r, dirs, UP);
-            arrow(c, "▼", x, h - r, dirs, DOWN);
-            arrow(c, "◀", r, y, dirs, LEFT);
-            arrow(c, "▶", w - r, y, dirs, RIGHT);
-        }
-
-        private void arrow(Canvas c, String text, float x, float y, int dirs, int dir) {
-            paint.setColor((dirs & dir) == 0 ? TEXT : MINT);
-            c.drawText(text, x, y - (paint.ascent() + paint.descent()) / 2, paint);
-        }
-
-        @Override public boolean onTouchEvent(MotionEvent event) {
-            int action = event.getActionMasked(), index = event.getActionIndex();
-            if (action == MotionEvent.ACTION_DOWN) pointer = event.getPointerId(index);
-            if (action == MotionEvent.ACTION_CANCEL || action == MotionEvent.ACTION_UP ||
-                    (action == MotionEvent.ACTION_POINTER_UP && event.getPointerId(index) == pointer)) pointer = -1;
-            int active = pointer < 0 ? -1 : event.findPointerIndex(pointer);
-            final int dirs = active < 0 ? 0 : directions(2 * event.getX(active) / getWidth() - 1,
-                    2 * event.getY(active) / getHeight() - 1, 0.29f);
-            session.touch.getAndUpdate(value -> (value & ~DIRECTIONS) | dirs);
-            invalidate();
-            if (action == MotionEvent.ACTION_UP) performClick();
-            return true;
-        }
-
-        @Override public boolean performClick() { return super.performClick(); }
-    }
-
-    private static int directions(float x, float y, float threshold) {
-        int d = 0;
-        if (x < -threshold) d |= LEFT;
-        if (x > threshold) d |= RIGHT;
-        if (y < -threshold) d |= UP;
-        if (y > threshold) d |= DOWN;
-        return d;
-    }
-
     @Override public boolean dispatchGenericMotionEvent(MotionEvent event) {
-        if (game != null && event.getActionMasked() == MotionEvent.ACTION_MOVE && event.isFromSource(InputDevice.SOURCE_JOYSTICK)) {
+        if (canPlay() && event.getActionMasked() == MotionEvent.ACTION_MOVE && event.isFromSource(InputDevice.SOURCE_JOYSTICK)) {
             int hat = directions(event.getAxisValue(MotionEvent.AXIS_HAT_X), event.getAxisValue(MotionEvent.AXIS_HAT_Y), 0.5f);
             int axis = directions(event.getAxisValue(MotionEvent.AXIS_X), event.getAxisValue(MotionEvent.AXIS_Y), 0.32f);
             game.stick.set(hat != 0 ? hat : axis);
@@ -531,7 +420,7 @@ public final class MainActivity extends Activity implements GameSession.Callback
     }
 
     @Override public boolean dispatchKeyEvent(KeyEvent event) {
-        if (game == null) return super.dispatchKeyEvent(event);
+        if (!canPlay()) return super.dispatchKeyEvent(event);
         final int button = gameButton(event.getKeyCode());
         if (button == 0) return super.dispatchKeyEvent(event);
         if (event.getAction() == KeyEvent.ACTION_DOWN) game.keys.getAndUpdate(value -> value | button);
@@ -557,11 +446,56 @@ public final class MainActivity extends Activity implements GameSession.Callback
         }
     }
 
+    private void showSkinPicker() {
+        ArcadeUi ui = new ArcadeUi(this);
+        ScrollView scroll = new ScrollView(this);
+        LinearLayout body = ui.column();
+        body.setPadding(ui.dp(20), ui.dp(7), ui.dp(20), ui.dp(6));
+        scroll.addView(body);
+        body.addView(ui.text("Original FBA4droid artwork. Choose the look you prefer.", 14, ArcadeUi.MUTED, false));
+        ui.space(body, 12);
+        AlertDialog.Builder builder = new AlertDialog.Builder(this).setTitle("Controller skin").setView(scroll)
+                .setPositiveButton("Done", null);
+        if (game == null) builder.setNeutralButton("How to play", (d, w) -> showGuide());
+        AlertDialog dialog = builder.create();
+        for (PadSkin candidate : PadSkin.values()) {
+            boolean selected = candidate == skin;
+            LinearLayout option = ui.column();
+            option.setPadding(ui.dp(10), ui.dp(9), ui.dp(10), ui.dp(9));
+            option.setBackground(ui.tappable(selected ? ArcadeUi.LIGHT_BLUE : ArcadeUi.WHITE,
+                    selected ? ArcadeUi.BLUE : ArcadeUi.BORDER, 13, false));
+            option.setFocusable(true);
+            option.setSelected(selected);
+            option.setContentDescription(candidate.title + ". " + candidate.detail);
+            PadPreview sample = new PadPreview(this, candidate, false);
+            sample.setBackground(ui.gradient(0xff253e56, ArcadeUi.NIGHT, 9));
+            option.addView(sample, new LinearLayout.LayoutParams(-1, ui.dp(60)));
+            ui.space(option, 8);
+            LinearLayout title = ui.row();
+            title.addView(ui.text(candidate.title, 16, ArcadeUi.INK, true), new LinearLayout.LayoutParams(0, -2, 1));
+            if (selected) title.addView(ui.eyebrow("IN USE", ArcadeUi.BLUE));
+            option.addView(title);
+            ui.space(option, 3);
+            option.addView(ui.text(candidate.detail, 13, ArcadeUi.MUTED, false));
+            option.setOnClickListener(v -> {
+                skin = candidate;
+                settings.edit().putString("skin", skin.name()).apply();
+                library.showSkin(skin);
+                if (player != null) player.setSkin(skin);
+                dialog.dismiss();
+            });
+            body.addView(option, new LinearLayout.LayoutParams(-1, -2));
+            ui.space(body, 9);
+        }
+        dialog.show();
+    }
+
     private void showGuide() {
         new AlertDialog.Builder(this).setTitle("Play offline")
                 .setMessage("1. Choose Import ZIP and pick files stored on your device. No games or BIOS are bundled.\n\n"
-                        + "2. Keep the original FBNeo set name. For a clone or a game that needs a BIOS, import the required ZIPs alongside it. Importing the same name replaces the local copy.\n\n"
-                        + "3. Tap Play. Use Coin and Start, then the touch buttons or an Android gamepad. Old FBA4droid saves and settings are not imported.\n\n"
+                        + "2. Keep the original FBNeo set names. Import any required parent or BIOS ZIPs alongside the game. Importing the same name replaces the local copy.\n\n"
+                        + "3. Tap a ROM to play. Tap Coin, then Start. Hold the D-pad and action buttons together, or use an Android gamepad.\n\n"
+                        + "4. Use Pause to change the skin, sound or touch controls, or go back to the library. This app doesn't import old FBA4droid saves or settings.\n\n"
                         + "This independent app uses FinalBurn Neo. Non-commercial use only.")
                 .setPositiveButton("Got it", null).setNeutralButton("Core license", (d, w) -> showLicense()).show();
     }
@@ -578,43 +512,4 @@ public final class MainActivity extends Activity implements GameSession.Callback
         new AlertDialog.Builder(this).setTitle("FinalBurn Neo license").setMessage(text).setPositiveButton("Close", null).show();
     }
 
-    private int dp(float value) { return Math.round(value * getResources().getDisplayMetrics().density); }
-
-    private LinearLayout row() {
-        LinearLayout row = new LinearLayout(this);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        return row;
-    }
-
-    private void gap(LinearLayout parent, int height) { parent.addView(new View(this), new LinearLayout.LayoutParams(1, dp(height))); }
-
-    private TextView label(String string, int size, int color, boolean bold) {
-        TextView text = new TextView(this);
-        text.setText(string);
-        text.setTextSize(size);
-        text.setTextColor(color);
-        if (bold) text.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        return text;
-    }
-
-    private Button button(String string, int fill, int ink) {
-        Button button = new Button(this);
-        button.setText(string);
-        button.setTextSize(14);
-        button.setAllCaps(false);
-        button.setTextColor(ink);
-        button.setPadding(dp(2), 0, dp(2), 0);
-        button.setMinWidth(0);
-        button.setMinimumWidth(0);
-        button.setBackground(new RippleDrawable(ColorStateList.valueOf(0x44ffffff), surface(fill, fill, 12), null));
-        return button;
-    }
-
-    private GradientDrawable surface(int fill, int border, int radius) {
-        GradientDrawable d = new GradientDrawable();
-        d.setColor(fill);
-        d.setCornerRadius(dp(radius));
-        d.setStroke(dp(1), border);
-        return d;
-    }
 }

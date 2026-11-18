@@ -5,7 +5,8 @@
         android:allowBackup="false"
         android:debuggable="false"
         android:extractNativeLibs="false"
-        android:icon="@drawable/ic_arcade"
+        android:icon="@drawable/legacy_ui_launcher"
+        android:roundIcon="@drawable/legacy_ui_launcher_round"
         android:label="FBA Offline"
         android:theme="@style/ArcadeTheme"
         android:usesCleartextTraffic="false">

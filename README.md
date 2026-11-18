@@ -9,21 +9,27 @@ app, not a modification or a signed update of `com.joyemu.fbaapp`.
 
 ## Install and play
 
-- [Download the signed v0.1.0 ARM64 test APK](artifacts/fba-offline-0.1.0-arm64-v8a-test.apk)
+- [Download the signed v0.2.0 ARM64 test APK](artifacts/fba-offline-0.2.0-arm64-v8a-test.apk)
   from this branch. The minimum is Android 8 (API 26) and the target is
   Android 17 (API 37).
-- Install **FBA Offline** as a separate app. Its app ID is
-  `io.github.ankushui18.fbaoffline`; its signing key, settings and saves are not
-  the original app's. There is no legacy save-state migration.
+- Install over the [published v0.1.0 test build](artifacts/fba-offline-0.1.0-arm64-v8a-test.apk)
+  without uninstalling. The package and published test signer match, so the
+  app keeps that install's private ROMs and saves. This is still a separate
+  app (`io.github.ankushui18.fbaoffline`) from FBA4droid; its legacy settings
+  and save states are not migrated.
 - In **Import ZIP**, pick arcade ROM sets you legally have. Keep the original
   FBNeo set names, including any required parent or BIOS ZIPs. Pick files from
   on-device storage. No ROM/BIOS archives are bundled or downloaded. An old
   FB Alpha set with the same name may have incompatible file hashes.
-- The library lists local ZIPs; **Play** starts a set, and **Coin** / **Start**
-  work with touch controls or an Android gamepad. A keyboard can use arrows,
-  Z/X/A/S/Q/W, Space and Enter. Audio, single-player digital controls, and
-  core-managed NVRAM are supported. This first build does not offer imported
-  cheats, old save states, online play, or a frontend for disc images.
+- Use **Library** or **Recent** and tap a ROM to play. **Coin** and **Start**
+  work with the original multi-touch controller or an Android gamepad. A
+  keyboard can use arrows, Z/X/A/S/Q/W, Space and Enter. The frontend supports
+  single-player digital controls and core-managed NVRAM, not legacy save
+  states, imported cheats, or netplay.
+- Pick **Chrome** or **Classic** from the library gear or **Pause → Controller
+  skin**. In landscape the controls overlay the fullscreen game; in portrait
+  they sit in a separate dock. **Pause** also lets you mute sound, hide the
+  touch controls for a gamepad, or return to the library.
 
 ## Privacy and scope
 
@@ -36,6 +42,21 @@ handed to FBNeo; use only ROM sets you trust. This is not a guarantee against
 all malware or all defects in native ROM parsing.
 
 See [the privacy and FBNeo comparison](docs/PRIVACY_AND_CORE.md).
+
+## Original artwork
+
+The blue toolbar, tabs and icon rows take their cues from FBA4droid. The
+checked-in PNGs preserve both original controller skins, including their
+pressed frames, along with the original launcher, library, and pause-menu
+artwork. Only static images are reused. No legacy executable code, ad, updater,
+web or QR assets were brought back. The APK verifier uses an explicit image
+allowlist and checks that those PNGs contain only image data.
+
+The old APK is **not required to build**. To regenerate the checked-in pixels
+from this specific original, run `python3 tools/import_legacy_art.py` in an
+environment with Pillow. The script checks the original APK's SHA-256 first.
+The original artwork remains the property of its respective rights holders;
+verify your rights to it before redistributing.
 
 ## Build from source
 

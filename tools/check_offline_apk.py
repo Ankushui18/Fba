@@ -7,8 +7,12 @@ import subprocess
 import sys
 import tempfile
 from zipfile import ZIP_STORED, ZipFile
+from zlib import crc32
+
+from import_legacy_art import ART
 
 
+ART_PATHS = {f"res/drawable-nodpi-v4/{name}" for name in ART}
 APP = "io.github.ankushui18.fbaoffline"
 NATIVE = re.compile(r"lib/(arm64-v8a|x86_64)/lib(retro|offlinefb)\.so\Z")
 ASSETS = {
@@ -109,17 +113,42 @@ def inspect_dex(dex):
     require(not any(marker.lower() in dex.lower() for marker in MARKERS), "network/install/tracker/dynamic DEX marker")
 
 
+def inspect_png(data, name):
+    # Legacy art is flattened to RGBA; don't permit metadata, animation, or a trailing payload.
+    require(45 <= len(data) <= 256 * 1024 and data[:8] == b"\x89PNG\r\n\x1a\n", f"invalid art: {name}")
+    size, kind, width, height, format_bytes = struct.unpack_from(">I4sII5s", data, 8)
+    require(size == 13 and kind == b"IHDR" and 0 < width <= 1024 and 0 < height <= 1024 and
+            format_bytes == b"\x08\x06\x00\x00\x00", f"art must be a static RGBA PNG: {name}")
+    pos = 8
+    chunks = 0
+    while pos + 12 <= len(data):
+        size, kind = struct.unpack_from(">I4s", data, pos)
+        end = pos + size + 12
+        require(end <= len(data), f"truncated PNG chunk: {name}")
+        require(crc32(data[pos + 4:end - 4]) == struct.unpack_from(">I", data, end - 4)[0], f"bad PNG checksum: {name}")
+        if kind == b"IEND":
+            require(size == 0 and chunks >= 2 and end == len(data), f"unexpected PNG end: {name}")
+            return
+        require(kind == (b"IHDR" if chunks == 0 else b"IDAT"), f"unexpected PNG chunk {kind!r}: {name}")
+        chunks += 1
+        pos = end
+    require(False, f"missing PNG end: {name}")
+
+
 def main(aapt2, apk):
     inspect_manifest(aapt2, apk)
     with ZipFile(apk) as z:
         require(z.testzip() is None, "archive CRC error")
         entries = set(z.namelist())
         require(len(entries) == len(z.infolist()), "duplicate archive entries")
-        mandatory = {"AndroidManifest.xml", "classes.dex", "resources.arsc", "res/drawable/ic_arcade.xml"} | ASSETS
+        mandatory = {"AndroidManifest.xml", "classes.dex", "resources.arsc", "res/drawable/ic_search.xml"} | ASSETS | ART_PATHS
         require(mandatory <= entries, f"missing files: {mandatory - entries}")
         libraries = {}
         for info in z.infolist():
             name = info.filename
+            if name in ART_PATHS:
+                require(info.file_size <= 256 * 1024, f"overlong PNG: {name}")
+                inspect_png(z.read(info), name)
             if name in mandatory:
                 continue
             match = NATIVE.fullmatch(name)

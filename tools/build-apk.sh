@@ -18,8 +18,8 @@ core=${FBNEO_SOURCE:-$root/.cache/FBNeo-libretro}
 abis=${ANDROID_ABIS:-arm64-v8a}
 min_sdk=26
 target_sdk=37
-version=0.1.0
-version_code=1
+version=0.2.0
+version_code=2
 main="$root/android/src/main"
 
 for required in "$jar" "$bsdk/aapt2" "$bsdk/d8" "$bsdk/apksigner" "$bsdk/zipalign" "$JAVA_HOME/bin/javac"; do
@@ -31,7 +31,7 @@ read -r -a abi_list <<< "$abis"
 work=$(mktemp -d "$root/build/apk.XXXXXX")
 trap 'rm -rf -- "$work"' EXIT
 stage="$work/stage"
-mkdir -p "$stage/lib" "$work/classes" "$work/dex" "$work/assets/licenses" "$root/artifacts"
+mkdir -p "$stage/lib" "$work/classes" "$work/dex" "$work/generated" "$work/assets/licenses" "$root/artifacts"
 
 for abi in "${abi_list[@]}"; do
   case $abi in
@@ -59,11 +59,12 @@ cp "$core/src/burn/drv/gba/license.txt" "$work/assets/licenses/gba.txt"
 cp "$core/src/burn/drv/snes/license.txt" "$work/assets/licenses/snes.txt"
 cp "$root/android/CORE-SOURCE.txt" "$work/assets/CORE-SOURCE.txt"
 
-"$bsdk/aapt2" compile --dir "$main/res" -o "$work/res.zip"
-"$bsdk/aapt2" link -I "$jar" --manifest "$main/AndroidManifest.xml" -A "$work/assets" \
+# Keep the checked-in legacy PNG pixels/chunks unchanged for the APK allowlist.
+"$bsdk/aapt2" compile --no-crunch --dir "$main/res" -o "$work/res.zip"
+"$bsdk/aapt2" link -I "$jar" --java "$work/generated" --manifest "$main/AndroidManifest.xml" -A "$work/assets" \
   --min-sdk-version "$min_sdk" --target-sdk-version "$target_sdk" \
   --version-code "$version_code" --version-name "$version" -o "$work/unsigned.apk" "$work/res.zip"
-mapfile -d '' sources < <(find "$main/java" -name '*.java' -print0 | sort -z)
+mapfile -d '' sources < <(find "$main/java" "$work/generated" -name '*.java' -print0 | sort -z)
 "$JAVA_HOME/bin/javac" -encoding UTF-8 --release 8 -classpath "$jar" -d "$work/classes" "${sources[@]}"
 (cd "$work/classes" && "$JAVA_HOME/bin/jar" cf "$work/frontend.jar" .)
 "$bsdk/d8" --release --lib "$jar" --min-api "$min_sdk" --output "$work/dex" "$work/frontend.jar"

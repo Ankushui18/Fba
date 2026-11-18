@@ -21,10 +21,6 @@ final class GameSession implements Runnable {
     static final AudioAttributes AUDIO = new AudioAttributes.Builder()
             .setUsage(AudioAttributes.USAGE_GAME).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build();
     private static final ExecutorService WORKER = Executors.newSingleThreadExecutor(task -> new Thread(task, "arcade-core"));
-    // libretro joypad bit numbering.
-    static final int B = 1, Y = 1 << 1, COIN = 1 << 2, START = 1 << 3;
-    static final int UP = 1 << 4, DOWN = 1 << 5, LEFT = 1 << 6, RIGHT = 1 << 7;
-    static final int A = 1 << 8, X = 1 << 9, L = 1 << 10, R = 1 << 11;
 
     interface Callbacks {
         void ready(GameSession session);
@@ -52,6 +48,7 @@ final class GameSession implements Runnable {
         paint.setFilterBitmap(false);
     }
 
+    String romName() { return rom.getName(); }
     void start() { WORKER.execute(this); }
     void stop() { stopping = true; }
     void resetInputs() { touch.set(0); keys.set(0); stick.set(0); }

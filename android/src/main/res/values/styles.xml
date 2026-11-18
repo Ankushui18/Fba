@@ -1,12 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="ArcadeTheme" parent="android:style/Theme.Material.NoActionBar">
+    <style name="ArcadeTheme" parent="android:style/Theme.Material.Light.NoActionBar">
         <item name="android:fontFamily">sans</item>
-        <item name="android:windowBackground">#101318</item>
-        <item name="android:colorAccent">#73F2BD</item>
-        <item name="android:statusBarColor">#101318</item>
-        <item name="android:navigationBarColor">#101318</item>
+        <item name="android:windowBackground">#EEF4FA</item>
+        <item name="android:colorAccent">#1675CA</item>
+        <item name="android:statusBarColor">#1459A1</item>
+        <item name="android:navigationBarColor">#FFFFFF</item>
         <item name="android:windowLightStatusBar">false</item>
-        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:windowActionModeOverlay">true</item>
     </style>
 </resources>
