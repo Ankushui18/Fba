@@ -45,10 +45,10 @@ The regular APK compiles **FBNeo 1.0.0.03** unchanged from the upstream-linked L
 code or emulator frontend source from the old APK is used. The main project
 and the Libretro port are pinned separately: the former is the comparison
 reference, the latter has the Android build and libretro frontend ABI. The
-optional Link APK applies a separate [four-line core patch](../android/patches/fbneo-lockstep.patch)
-so the existing deterministic netplay time and random seed take effect at
+APK applies a separate [four-line core patch](../android/patches/fbneo-lockstep.patch)
+so Link's deterministic netplay time and random seed take effect at
 initialization, not only when serializing a state. The patch and core licenses
-are in the Link APK.
+are bundled in the APK.
 Reproduce the comparison:
 
 ```sh
@@ -107,11 +107,12 @@ reviewed xBRZ copies established a compatible license grant. Old `.romdata`,
 E680 `.fba` caches and Alpha states are not loaded. Digital mapping is not true
 analog trackball or lightgun input.
 
-The regular APK has no Android permissions or Bluetooth/network transport.
-The Link APK permits only `INTERNET`, `ACCESS_LOCAL_NETWORK`, legacy
-`BLUETOOTH` through API 30, and `BLUETOOTH_CONNECT`. Link binds a selected
-private IPv4 address and checks the peer subnet, or opens an authenticated
-RFCOMM socket to a bonded peer; the room code authenticates the input exchange.
+The current APK declares only the local multiplayer permissions: `INTERNET`,
+`ACCESS_LOCAL_NETWORK`, legacy `BLUETOOTH` through API 30, and
+`BLUETOOTH_CONNECT`. Solo play does not need a network connection or a runtime
+network/Bluetooth grant. Link binds a selected private IPv4 address and checks
+the peer subnet, or opens an authenticated RFCOMM socket to a bonded peer;
+the room code authenticates the input exchange.
 There is no DNS, cloud service, discovery, SDK tracker or background listener.
 The host and guest exchange set fingerprints and control data, not ROM/state
 files. The frontend has no arbitrary host-side code execution or install path.
@@ -125,12 +126,13 @@ Checksums detect damage, not who made the ZIP. Restore your own backups only.
 
 ## Verification and installation
 
-- Both ARM64 APKs pass v2/v3 signature, launcher-only manifest, payload/CRC,
+- The ARM64 APK passes v2/v3 signature, launcher-only manifest, payload/CRC,
   native dependencies/imports, non-executable stack and **16 KiB APK and ELF
-  alignment** checks. The verifier enforces zero permissions for the regular
-  APK and a fixed manifest and networking API allowlist for the Link APK.
-  The catalog and Link patch bytes are checked against source. These checks
-  are not an antivirus verdict or a runtime network observation.
+  alignment** checks. The verifier enforces a fixed manifest and networking
+  API allowlist and compares the catalog and Link patch bytes against source.
+  The `--legacy-offline` verifier mode still checks archived permission-free
+  builds. These checks are not an antivirus verdict or a runtime network
+  observation.
 - The shell build uses Android SDK 37.0/Build Tools 36.1.0 from pinned
   [`whynusn/android-sdk-bundle@3dd1d84`](https://github.com/whynusn/android-sdk-bundle/tree/3dd1d84b2a76870a5995107613af83f6114450ae)
   (bundle checksums verified), Temurin 17.0.20.1 and NDK 23.0.7599858 from the
@@ -177,9 +179,9 @@ flavors share their own ID and signer, so they replace each other. The signed
 versionCode (5 and 6), so 0.5.1 can update 0.5.0 or 0.4.0 Recovery without
 uninstalling.
 
-The published 0.5.2 APKs use **FBA Arcade** as the launcher label, code 7, and
-the same app ID (`io.github.ankushui18.fbaarcade.recovery.preview`) and signer
-(SHA-256 `d8a45e30010cfbee84fef2227b3e0c98e585046658c0a0582df0845d8fd0d396`)
-as 0.5.1 Recovery Preview. They are in-place updates for that install, not
-for original Recovery. Their Offline and Link FBNeo binaries match the
-previous flavor-specific core hashes.
+The current 0.5.2 APK is the previously signed Link binary, with launcher
+label **FBA Arcade**, version code 7, and the same app ID
+(`io.github.ankushui18.fbaarcade.recovery.preview`) and signer (SHA-256
+`d8a45e30010cfbee84fef2227b3e0c98e585046658c0a0582df0845d8fd0d396`)
+as 0.5.1 Recovery Preview. It replaces the earlier 0.5.2 Offline APK too, but
+cannot update original Recovery. The Link FBNeo core bytes are unchanged.

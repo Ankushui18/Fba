@@ -6,22 +6,19 @@ update of the original `com.joyemu.fbaapp`.
 
 ## Install and play
 
-**FBA Arcade 0.5.2** adds [Backup & restore](#back-up-saves-and-settings) and
-keeps the 0.5.1 image-filter timing fix. These signed APKs are for 64-bit ARM
-phones on **Android 8 or later**.
+[**Download FBA Arcade 0.5.2 APK**](https://github.com/Ankushui18/Fba/raw/refs/heads/arena/efa257c2-fba/artifacts/fba-arcade-0.5.2-preview-link-arm64-v8a-test.apk)
+— signed, 64-bit ARM, **Android 8 or later**. This is the single current build:
+offline solo play, [local Wi-Fi/Bluetooth multiplayer](docs/LINK_PLAY.md), and
+[Backup & restore](#back-up-saves-and-settings) in one APK. It keeps the 0.5.1
+image-filter timing fix. The standalone Offline download has been retired.
 
-| Download from GitHub | Use it for |
-|---|---|
-| [**Offline APK**](https://github.com/Ankushui18/Fba/raw/refs/heads/arena/efa257c2-fba/artifacts/fba-arcade-0.5.2-preview-arm64-v8a-test.apk) | Solo play, **zero Android permissions**. |
-| [**Link APK**](https://github.com/Ankushui18/Fba/raw/refs/heads/arena/efa257c2-fba/artifacts/fba-arcade-0.5.2-preview-link-arm64-v8a-test.apk) | Optional [local multiplayer](docs/LINK_PLAY.md), also includes solo play. |
-
-Download the `.apk`, not the [SHA-256 list](artifacts/FBA-Arcade-0.5.2-SHA256SUMS.txt).
-**Install over 0.5.1 Recovery Preview without uninstalling.** The app ID and
-signer are unchanged, so the update keeps its library, saves and settings. The
-launcher now says **FBA Arcade**. Offline and Link replace each other.
+Download the `.apk`, not the [SHA-256 checksum](artifacts/FBA-Arcade-0.5.2-SHA256SUMS.txt).
+**Install over 0.5.1 Recovery Preview or the 0.5.2 Offline build without
+uninstalling.** The app ID and signer match, so the library, saves and settings
+stay in place. If you already have 0.5.2 Link, keep it: this is the same APK.
 
 The separately signed original **FBA Arcade Recovery** and **FBA4droid** are not
-updated by these APKs. Leave them installed if you need their data. The backup
+updated by this APK. Leave them installed if you need their data. The backup
 feature only reads data from the FBA Arcade install you're using.
 
 The previous [0.4.0 Recovery prerelease](https://github.com/Ankushui18/Fba/releases/tag/v0.4.0-recovery)
@@ -133,8 +130,9 @@ items per folder listing, and 512 MiB per ZIP. Uninstalling deletes this install
 data. Export a backup ZIP and any screenshots you want to keep first. Manual
 backup/restore uses the Android document picker; it doesn't add permissions,
 a cloud account or automatic uploads.
-The optional Link APK adds narrowly scoped local multiplayer traffic and no
-background service. See [asset provenance and privacy](docs/PRIVACY_AND_CORE.md).
+Solo play does not need a network connection. The APK declares only the
+[permissions used for local multiplayer](docs/LINK_PLAY.md) and runs no
+background network service. See [asset provenance and privacy](docs/PRIVACY_AND_CORE.md).
 
 ## Build and verify
 
@@ -148,19 +146,19 @@ export JAVA_HOME=/path/to/jdk
 export ANDROID_SDK_ROOT=/path/to/android-sdk
 export ANDROID_NDK_HOME="$ANDROID_SDK_ROOT/ndk/28.2.13676358"
 ./tools/build-apk.sh
-ARCADE_LINK=1 ./tools/build-apk.sh
 ./tools/test.sh
-./tools/verify-apk.sh artifacts/fba-arcade-0.5.2-arm64-v8a-test.apk
-./tools/verify-apk.sh artifacts/fba-arcade-0.5.2-link-arm64-v8a-test.apk --link
+./tools/verify-apk.sh artifacts/fba-arcade-0.5.2-link-arm64-v8a-test.apk
 ```
 
 No Gradle/Maven dependencies or legacy APK files are needed. `tools/build-core.sh`
 fetches and checks the [FBNeo Libretro pin `2da48555`](https://github.com/libretro/FBNeo/tree/2da48555c13ce5d011edf2d6ec829b7393c070af).
-Set `FBNEO_SOURCE` to a clean checkout of that pin to build offline. The regular
-build uses it unchanged; Link applies the small, recorded deterministic startup
-patch in a separate source directory. `ANDROID_PLATFORM`, `ANDROID_BUILD_TOOLS`,
-`JOBS` and `APK_OUTPUT` are optional build overrides. `ANDROID_ABIS=x86_64` builds
-an x86-64 APK. See [Android acceptance checks](docs/ANDROID_SMOKE.md).
+Set `FBNEO_SOURCE` to a clean checkout of that pin to build without fetching the
+core. The build always includes Link and applies the recorded deterministic
+startup patch in a separate source directory. `ANDROID_PLATFORM`,
+`ANDROID_BUILD_TOOLS`, `JOBS` and `APK_OUTPUT` are optional build overrides.
+`ANDROID_ABIS=x86_64` builds an x86-64 APK. To audit an older permission-free
+Offline APK, use `./tools/verify-apk.sh OLD.apk --legacy-offline`.
+See [Android acceptance checks](docs/ANDROID_SMOKE.md).
 
 For a real-core Linux smoke test, build the pinned core with
 `make -C "$FBNEO_SOURCE/src/burner/libretro" -j2 platform=unix` and run
@@ -173,10 +171,11 @@ separate two-core protocol test, see [Link setup](docs/LINK_PLAY.md#host-test).
 (never checked in) and the ID `io.github.ankushui18.fbaarcade.test`. Keep the
 matching key for upgrades. `ARCADE_RECOVERY=preview ./tools/build-apk.sh`
 uses `io.github.ankushui18.fbaarcade.recovery.preview`, the app ID of the
-published APKs, and requires the original Preview key. `ARCADE_RECOVERY=1`
+published APK, and requires the original Preview key. `ARCADE_RECOVERY=1`
 uses `io.github.ankushui18.fbaarcade.recovery` and requires that separate app's
 key. The script verifies each upgrade certificate and will not generate
-replacement keys for these IDs. Add `ARCADE_LINK=1` for Link beta.
+replacement keys for these IDs. These are signing profiles, not feature
+variants; all produce the same solo and local multiplayer features.
 `APK_KEYSTORE` and `APK_KEY_ALIAS` use
 your own signer and the original frontend ID `io.github.ankushui18.fbaoffline`;
 the script prompts for the password locally. A new key cannot update an

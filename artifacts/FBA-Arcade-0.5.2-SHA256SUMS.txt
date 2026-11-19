@@ -1,2 +1,1 @@
-2ff0f735daaad17aabe61e36117fc26192bf6d9afdec3b834687e12d5677bfa2  fba-arcade-0.5.2-preview-arm64-v8a-test.apk
 53ed5ed5e1f4bd85994b451e81c0f5d0f0c3775edc794c74db38eb284490dd0b  fba-arcade-0.5.2-preview-link-arm64-v8a-test.apk

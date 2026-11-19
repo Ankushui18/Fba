@@ -1,10 +1,10 @@
 # FBA Arcade Link beta
 
-Install the [FBA Arcade 0.5.2 Link APK](../README.md#install-and-play) on both
-phones. It updates the 0.5.1 Recovery Preview install (Offline or Link), not
-original Recovery. The wire and compatibility ID are unchanged from 0.5.0;
-0.4.0 peers are still rejected. The Offline APK has no Bluetooth or network
-transport.
+Install the [FBA Arcade 0.5.2 APK](../README.md#install-and-play) on both phones.
+It already includes both solo play and Link multiplayer. It replaces the
+standalone 0.5.2 Offline build or updates 0.5.1 Recovery Preview without
+uninstalling; it does not update original Recovery. The wire and compatibility
+ID are unchanged from 0.5.0; 0.4.0 peers are still rejected.
 
 ## Start a two-player game
 
@@ -26,7 +26,7 @@ transport.
    either device stops game frames for both. To leave, use **Pause → Exit link**.
    Moving either app to the background ends the session.
 
-The Link build needs Internet permission to open a LAN socket, Local Network
+Link uses the Android Internet permission to open a LAN socket, Local Network
 permission where enforced (Android 17+), and Nearby Devices (`BLUETOOTH_CONNECT`)
 on Android 12+ for Bluetooth (legacy `BLUETOOTH` on Android 8–11). It asks for
 runtime permissions only for the selected connection method. Denying them

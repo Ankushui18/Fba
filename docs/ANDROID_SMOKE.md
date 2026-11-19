@@ -1,16 +1,16 @@
 # FBA Arcade 0.5.2 — Android acceptance checks
 
-Both signed ARM64 APKs passed build and host verification. No Android device
+The signed ARM64 APK passed build and host verification. No Android device
 was connected. These checks verify Android UI/SAF, input, audio, and hardware
 connectivity on a phone or tablet. Use a legally obtained ROM set for the
 pinned FBNeo revision, including its BIOS/parent dependencies.
 
-1. **Update in place.** Install the [0.5.2 Offline APK](../README.md#install-and-play)
-   over 0.5.1 Recovery Preview. Do not uninstall first. Check that the launcher
-   says **FBA Arcade** and that ROMs, saved folder access, settings and an
-   existing save still work. Any original Recovery or FBA4droid install should
-   be untouched. Offline should request no permissions; the Android document
-   picker only grants access to what you select.
+1. **Update in place.** Install the [0.5.2 APK](../README.md#install-and-play)
+   over 0.5.1 Recovery Preview or the earlier 0.5.2 Offline build. Do not uninstall
+   first. Check that the launcher says **FBA Arcade** and that ROMs, saved folder
+   access, settings and an existing save still work. Any original Recovery or
+   FBA4droid install should be untouched. Start a solo game without a network
+   connection or a Bluetooth/Local Network runtime grant.
 2. **Import and browse.** Use **Import ZIPs** and **Files → Browse folder**.
    Select a directory with ZIPs and a nested folder. Navigate down/up; choose
    one ZIP or import the listed ZIPs. Reopen the app and browse without picking
@@ -72,8 +72,8 @@ pinned FBNeo revision, including its BIOS/parent dependencies.
    added. The destination's ROM copies and folder grant must remain intact.
    Cancel a picker/confirmation and try a plain ROM ZIP and a truncated copy of
    the backup; none should change the current slots or settings.
-9. **Link beta only, two phones.** Update both to the 0.5.2 Link APK. See
-   [setup](LINK_PLAY.md). Test Wi-Fi P1/P2 and paired Bluetooth P1/P2. Check
+9. **Local multiplayer, two phones.** Install the same 0.5.2 APK on both.
+   See [Link setup](LINK_PLAY.md). Test Wi-Fi P1/P2 and paired Bluetooth P1/P2. Check
    separate inputs, paired pause/resume and safe exit. Try different filters
    on the two phones. Check a mixed 0.5.1/0.5.2 pair (same protocol), a rejected
    0.4.0 peer, wrong room code, different ZIP revision, permission denial,

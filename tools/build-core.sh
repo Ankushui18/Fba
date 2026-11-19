@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+if [[ ${ARCADE_LINK:-1} != 1 ]]; then
+  echo 'The standalone Offline core is retired. Unset ARCADE_LINK to build the local multiplayer core.' >&2
+  exit 1
+fi
 core=${FBNEO_SOURCE:-$root/.cache/FBNeo-libretro}
 ndk=${ANDROID_NDK_HOME:?Set ANDROID_NDK_HOME to an installed Android NDK}
 core_url=https://github.com/libretro/FBNeo.git
@@ -26,14 +30,10 @@ core=$(cd -- "$core" && pwd)
   echo "Use an unchanged checkout of $core_url at $core_rev (new directory via FBNEO_SOURCE)." >&2; exit 1;
 }
 
-out="$root/build/core"
-if [[ ${ARCADE_LINK:-0} == 1 ]]; then
-  copy="$root/.cache/FBNeo-link"
-  "$root/tools/prepare-link-core.sh" "$core" "$copy"
-  core="$copy"
-  out="$root/build/core-link"
-fi
-port="$core/src/burner/libretro"
+out="$root/build/core-link"
+copy="$root/.cache/FBNeo-link"
+"$root/tools/prepare-link-core.sh" "$core" "$copy"
+port="$copy/src/burner/libretro"
 "$ndk/ndk-build" -C "$port" -j"$jobs" \
   "NDK_PROJECT_PATH=$port" "APP_BUILD_SCRIPT=$port/jni/Android.mk" \
   "NDK_APPLICATION_MK=$port/jni/Application.mk" "APP_ABI=$abis" \

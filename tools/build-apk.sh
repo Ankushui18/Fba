@@ -4,6 +4,11 @@ set -euo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$root"
 
+if [[ ${ARCADE_LINK:-1} != 1 ]]; then
+  echo 'The standalone Offline build is retired. Unset ARCADE_LINK to build FBA Arcade with local multiplayer.' >&2
+  exit 1
+fi
+
 export JAVA_HOME=${JAVA_HOME:?Set JAVA_HOME to a JDK (17 or newer)}
 export PATH="$JAVA_HOME/bin:$PATH"
 sdk=${ANDROID_SDK_ROOT:-${ANDROID_HOME:?Set ANDROID_SDK_ROOT to the Android SDK}}
@@ -55,21 +60,16 @@ if [[ -n $expected_cert ]]; then
     echo "The signing certificate does not match the installed $test_package build." >&2; exit 1
   }
 fi
-artifact_version="$version$artifact_suffix"
+# Preserve the existing signed Link package/version and artifact names.
+artifact_version="$version$artifact_suffix-link"
 manifest_package=()
 if [[ -z ${APK_KEYSTORE:-} ]]; then
   manifest_package=(--rename-manifest-package "$test_package")
 fi
 main="$root/android/src/main"
+link="$root/android/src/link"
 hqx="$root/android/third_party/hqx"
-variant=offline
-core_out="$root/build/core"
-verify_args=()
-case ${ARCADE_LINK:-0} in
-  0) ;;
-  1) variant=link; core_out="$root/build/core-link"; version+=-link; artifact_version+=-link; verify_args=(--link) ;;
-  *) echo 'ARCADE_LINK must be 0 or 1.' >&2; exit 1 ;;
-esac
+core_out="$root/build/core-link"
 
 for required in "$jar" "$bsdk/aapt2" "$bsdk/d8" "$bsdk/apksigner" "$bsdk/zipalign" "$JAVA_HOME/bin/javac"; do
   [[ -f $required ]] || { echo "Missing build tool or platform: $required" >&2; exit 1; }
@@ -114,20 +114,17 @@ cp "$hqx/COPYING" "$work/assets/licenses/hqx.txt"
 cp "$hqx/AUTHORS" "$work/assets/licenses/hqx-authors.txt"
 cp "$main/assets/"{game-art.zip,game-catalog.tsv,game-cheats.zip,ips-targets.zip} "$work/assets/"
 
-manifest="$main/AndroidManifest.xml"
-if [[ $variant == link ]]; then
-  python3 "$root/tools/link_manifest.py" "$manifest" "$work/AndroidManifest.xml"
-  manifest="$work/AndroidManifest.xml"
-  cp "$root/android/patches/fbneo-lockstep.patch" "$work/assets/FBNeo-LINK.patch"
-  printf '\nThis Link build applies FBNeo-LINK.patch to initialize the existing deterministic mode before driver startup.\n' >> "$work/assets/CORE-SOURCE.txt"
-fi
+manifest="$work/AndroidManifest.xml"
+python3 "$root/tools/link_manifest.py" "$main/AndroidManifest.xml" "$manifest"
+cp "$root/android/patches/fbneo-lockstep.patch" "$work/assets/FBNeo-LINK.patch"
+printf '\nThis Link build applies FBNeo-LINK.patch to initialize the existing deterministic mode before driver startup.\n' >> "$work/assets/CORE-SOURCE.txt"
 # Keep the checked-in legacy PNG pixels/chunks unchanged for the APK allowlist.
 "$bsdk/aapt2" compile --no-crunch --dir "$main/res" -o "$work/res.zip"
 "$bsdk/aapt2" link -I "$jar" --java "$work/generated" --manifest "$manifest" -A "$work/assets" \
   --custom-package "$java_package" "${manifest_package[@]}" \
   --min-sdk-version "$min_sdk" --target-sdk-version "$target_sdk" \
-  --version-code "$version_code" --version-name "$version" -o "$work/unsigned.apk" "$work/res.zip"
-mapfile -d '' sources < <(find "$main/java" "$root/android/src/$variant/java" "$work/generated" -name '*.java' -print0 | sort -z)
+  --version-code "$version_code" --version-name "$version-link" -o "$work/unsigned.apk" "$work/res.zip"
+mapfile -d '' sources < <(find "$main/java" "$link/java" "$work/generated" -name '*.java' -print0 | sort -z)
 "$JAVA_HOME/bin/javac" -encoding UTF-8 --release 8 -classpath "$jar" -d "$work/classes" "${sources[@]}"
 (cd "$work/classes" && "$JAVA_HOME/bin/jar" cf "$work/frontend.jar" .)
 "$bsdk/d8" --release --lib "$jar" --min-api "$min_sdk" --output "$work/dex" "$work/frontend.jar"
@@ -169,6 +166,6 @@ apk="${APK_OUTPUT:-$root/artifacts/fba-arcade-$artifact_version-$arch-$flavor.ap
 "$bsdk/apksigner" sign --ks "$ks" --ks-key-alias "$key" "${password[@]}" \
   --v1-signing-enabled false --v2-signing-enabled true --v3-signing-enabled true --v4-signing-enabled false \
   --out "$work/signed.apk" "$work/aligned.apk"
-"$root/tools/verify-apk.sh" "$work/signed.apk" "${verify_args[@]}"
+"$root/tools/verify-apk.sh" "$work/signed.apk"
 install -m 0644 "$work/signed.apk" "$apk"
 sha256sum "$apk"
