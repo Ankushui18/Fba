@@ -6,25 +6,21 @@ update of the original `com.joyemu.fbaapp`.
 
 ## Install and play
 
-**0.5.1 is the image-filter timing fix for the 0.5.0 parity test.** The signed
-Recovery APKs are for 64-bit ARM phones on Android 8 or later. They keep the
-Recovery app ID and signer, with versionCode 6. Install **over 0.5.0 or 0.4.0
-Recovery without uninstalling** to keep its private data. Offline and Link
-beta replace one another. Neither updates the original FBA4droid, the original
-FBA Arcade test app, or v0.1/v0.2. A separately built APK only updates an
-existing install if it uses the same signer.
+**0.5.1 Recovery Preview** includes the image-filter timing fix. The signed
+APKs below are for 64-bit ARM phones on **Android 8 or later**.
 
-| 0.5.1 test build output | Use it for |
+| Download from GitHub | Use it for |
 |---|---|
-| `fba-arcade-0.5.1-recovery-arm64-v8a-test.apk` | Offline play, **zero Android permissions**. |
-| `fba-arcade-0.5.1-recovery-link-arm64-v8a-test.apk` | Optional [Link beta](docs/LINK_PLAY.md), including all solo features. Two-phone Android transport testing is pending. |
+| [**Offline APK**](https://github.com/Ankushui18/Fba/raw/refs/heads/arena/efa257c2-fba/artifacts/fba-arcade-0.5.1-recovery-preview-arm64-v8a-test.apk) | Solo play, **zero Android permissions**. |
+| [**Link APK**](https://github.com/Ankushui18/Fba/raw/refs/heads/arena/efa257c2-fba/artifacts/fba-arcade-0.5.1-recovery-preview-link-arm64-v8a-test.apk) | Optional [local multiplayer](docs/LINK_PLAY.md), also includes solo play. |
 
-**Recovery Preview (separate install):** if the original Recovery signing key
-isn't available, build with `ARCADE_RECOVERY=preview`. The output is
-`fba-arcade-0.5.1-recovery-preview-arm64-v8a-test.apk` (or `-preview-link-`
-for local multiplayer). It has a different app ID and key and can be installed
-next to Recovery without deleting it. It does not copy Recovery's private ROMs,
-saves or settings. Download the `.apk`; a `SHA256SUMS.txt` file only lists hashes.
+Download the `.apk`, not the [SHA-256 list](artifacts/FBA-Arcade-0.5.1-Recovery-Preview-SHA256SUMS.txt).
+**Recovery Preview installs separately.** Do not uninstall your older app.
+Its ROMs, saves and settings stay there and do not transfer automatically.
+Offline and Link share the Preview app ID and signer, so they replace each
+other. If you have the original Recovery signing key, `ARCADE_RECOVERY=1`
+can instead build an in-place update for that Recovery install. The downloads
+above are not that update.
 
 The previous [0.4.0 Recovery prerelease](https://github.com/Ankushui18/Fba/releases/tag/v0.4.0-recovery)
 is unchanged. See the [feature-by-feature 1.77 comparison](docs/FBA4DROID_PARITY.md)

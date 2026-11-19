@@ -1,10 +1,9 @@
 # FBA Arcade Link beta
 
-Use `fba-arcade-0.5.1-recovery-link-arm64-v8a-test.apk` on both phones for
-the image-filter fix. It can update signed 0.4.0 or 0.5.0 Recovery and can
-replace Recovery Offline. It doesn't replace an older non-Recovery FBA Arcade
-install. The wire and compatibility ID are unchanged from 0.5.0; 0.4.0 peers
-are still rejected. The Offline APK contains no Bluetooth or network transport.
+For the image-filter fix, install the [0.5.1 Recovery Preview Link APK](../README.md#install-and-play)
+on both phones. It replaces Preview Offline, not the original Recovery app.
+The wire and compatibility ID are unchanged from 0.5.0; 0.4.0 peers are still
+rejected. The Offline APK contains no Bluetooth or network transport.
 
 ## Start a two-player game
 

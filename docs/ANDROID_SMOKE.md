@@ -5,12 +5,13 @@ was connected. These checks verify Android UI/SAF, input, audio, and hardware
 connectivity on a phone or tablet. Use a legally obtained ROM set for the
 pinned FBNeo revision, including its BIOS/parent dependencies.
 
-1. **Install/update.** Use Offline first. For the signed timing-fix APKs, install
-   0.5.1 **over** 0.5.0 or 0.4.0 Recovery; compare the ID and cert before testing
-   a different build. Check that the library, an existing control layout, save
-   slots, IPS variants and cheats survive. Don't uninstall the old app. Offline
-   should request no permissions; the Android file picker is not a permission
-   prompt for all storage. Original FBA Arcade/FBA4droid installs stay separate.
+1. **Install.** Use [Recovery Preview Offline](../README.md#install-and-play)
+   first. Verify it appears as a separate app alongside any older Recovery
+   installation and leaves that app's data alone. Do not uninstall the old app.
+   If separately testing an in-place upgrade with the original Recovery signer,
+   compare the app ID and cert and check its library, layouts and saves survive.
+   Offline should request no permissions; the Android file picker is not a
+   permission prompt for all storage.
 2. **Import and browse.** Use **Import ZIPs** and **Files → Browse folder**.
    Select a directory with ZIPs and a nested folder. Navigate down/up; choose
    one ZIP or import the listed ZIPs. Reopen the app and browse without picking
