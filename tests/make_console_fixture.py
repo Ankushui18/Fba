@@ -13,6 +13,36 @@ from zipfile import ZipFile
 from make_core_fixture import fit_checksum
 
 
+def loose_cart(mapper, prg, chr_, *, nes20=False, battery=False, pal=False, nonce=0):
+    """Test program waits for Start, sets the backdrop, and plays a pulse tone."""
+    data = bytearray(16 + prg * 16384 + chr_ * 8192)
+    data[:4] = b"NES\x1a"
+    data[4:8] = bytes((prg, chr_, ((mapper & 15) << 4) | (2 if battery else 0),
+                      (mapper & 0xf0) | (8 if nes20 else 0)))
+    if nes20:
+        data[10] = 0x70 if battery else 0  # 8 KiB NVRAM if present
+        data[11] = 0 if chr_ else 7       # 8 KiB CHR RAM
+        data[12] = int(pal)
+    start = 16 + prg * 16384 - 8192  # $e000 in the last mapped PRG bank
+    code = bytearray.fromhex(
+        "78 D8 A2 FF 9A A9 00 8D 00 20 8D 01 20 "  # reset, leave rendering off
+        "2C 02 20 10 FB 2C 02 20 10 FB "           # wait two vblanks
+        "A9 01 8D 16 40 A9 00 8D 16 40 "            # latch both controllers
+        "AD 16 40 AD 16 40 AD 16 40 AD 16 40 29 01 F0 E6 "  # wait for P1 Start (4th bit)
+        "A9 5A 8D 00 60 "                           # marker for battery tests
+        "A9 3F 8D 06 20 A9 00 8D 06 20 A9 21 8D 07 20 "      # palette $3f00
+        "A9 00 8D 06 20 8D 06 20 "                 # return PPU address to pattern table
+        "A9 01 8D 15 40 A9 7F 8D 00 40 A9 70 8D 02 40 A9 00 8D 03 40"  # pulse channel
+    )
+    loop = 0xe000 + len(code)
+    code += bytes((0x4c, loop & 0xff, loop >> 8))
+    data[start:start+len(code)] = code
+    data[start+0x1f00] = nonce
+    for vector in (0x1ffa, 0x1ffc, 0x1ffe):
+        pack_into("<H", data, start + vector, 0xe000)
+    return data
+
+
 def make(index, output):
     sets = {(r[0], r[1]): r[-1] for line in index.read_text(encoding="utf-8").splitlines()
             if (r := line.split("\t"))}
@@ -69,10 +99,18 @@ def make(index, output):
     with ZipFile(output / "fdsbios.zip", "w") as out:
         out.writestr("fdsbios.nes", fit_checksum(data, crc))
 
+    # No DAT CRC adjustment for these ordinary iNES/NES 2.0 cartridges.
+    (output / "Homebrew.nes").write_bytes(loose_cart(0, 2, 1, battery=True))
+    (output / "Headerless filename").write_bytes(loose_cart(0, 1, 1, battery=True, nonce=2))
+    (output / "MMC1.NES").write_bytes(loose_cart(1, 8, 16, nes20=True, battery=True))
+    (output / "UxROM.nes").write_bytes(loose_cart(2, 8, 0))
+    (output / "CNROM.nes").write_bytes(loose_cart(3, 2, 4))
+    (output / "MMC3 PAL.nes").write_bytes(loose_cart(4, 16, 16, nes20=True, pal=True))
+    (output / "AxROM.nes").write_bytes(loose_cart(7, 2, 0))
+    (output / "GxROM.nes").write_bytes(loose_cart(66, 2, 4))
+
     # Correct iNES signature, length and alternate CRC, but NOT the verified SHA-256.
-    fake = bytearray(262160)
-    fake[:16] = b"NES\x1a\x08\x10\x10" + bytes(9)
-    (output / "Unverified NES collision.nes").write_bytes(fit_checksum(fake, 0xed1d282b))
+    (output / "Unverified NES collision.nes").write_bytes(fit_checksum(loose_cart(1, 8, 16), 0xed1d282b))
 
 
 if __name__ == "__main__":

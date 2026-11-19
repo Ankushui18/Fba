@@ -116,7 +116,7 @@ def inspect_manifest(aapt2, apk, link):
     require(version_code < 8 or link, "current APKs must include local multiplayer")
     # Older pinned downloads still have their original labels. The app IDs are unchanged.
     suffix, label = PACKAGES[package[1]] if version_code < 7 else ("", "FBA Arcade")
-    released_versions = {7: "0.5.2", 8: "0.5.3", 9: "0.5.4", 10: "0.5.5", 11: "0.5.6"}
+    released_versions = {7: "0.5.2", 8: "0.5.3", 9: "0.5.4", 10: "0.5.5", 11: "0.5.6", 12: "0.5.7"}
     version = re.escape(released_versions[version_code]) if version_code in released_versions else r"\d+\.\d+\.\d+"
     expected_version = version + re.escape(suffix + ("-link" if link else ""))
     require(re.fullmatch(expected_version, package[3]), "wrong APK version or variant")

@@ -64,7 +64,7 @@ import java.util.function.IntConsumer;
 import static io.github.ankushui18.fbaoffline.Joypad.directions;
 
 public final class MainActivity extends Activity implements GameSession.Callbacks {
-    private static final int PICK_ZIPS = 101, PICK_FOLDER = 102, PICK_ART = 103, EXPORT_SHOT = 104, PICK_SKIN = 105;
+    private static final int PICK_GAMES = 101, PICK_FOLDER = 102, PICK_ART = 103, EXPORT_SHOT = 104, PICK_SKIN = 105;
     private static final int EXPORT_BACKUP = 106, RESTORE_BACKUP = 107;
     private static final int MAX_BATCH = 64, HISTORY_LIMIT = 24;
     private static final String RECENT_FILES = "recent_roms", FAVORITES = "favorites", QUICK_RESUME = "quick_resume_enabled";
@@ -129,7 +129,7 @@ public final class MainActivity extends Activity implements GameSession.Callback
         romFolders = new RomFolders(this, settings, new RomFolders.Host() {
             @Override public <T> void job(String status, Callable<T> task, Consumer<T> done) { libraryJob(status, task, done); }
             @Override public void choose() { chooseTree(PICK_FOLDER); }
-            @Override public void copy(List<Uri> zips, String note) { startGameImport(zips, note); }
+            @Override public void copy(List<Uri> files, String note) { startGameImport(files, note); }
             @Override public void note(String text) { showLibrary(text); }
         });
         showLibrary(null);
@@ -145,7 +145,7 @@ public final class MainActivity extends Activity implements GameSession.Callback
 
     private LibraryScreen createLibrary() {
         LibraryScreen screen = new LibraryScreen(this, catalog, settings, new LibraryScreen.Actions() {
-            @Override public void importZips() { chooseZips(); }
+            @Override public void pickGames() { chooseGames(); }
             @Override public void browseFolder() { browseRoms(); }
             @Override public void settings() { showSettings(); }
             @Override public void play(File file) { MainActivity.this.play(file); }
@@ -308,9 +308,9 @@ public final class MainActivity extends Activity implements GameSession.Callback
                 case 8: libraryTools.cheatFiles(file); break;
                 case 9: linkMenu.show(file, connection -> play(file, null, 0, connection)); break;
                 case 5:
-                    new AlertDialog.Builder(this).setTitle("Remove " + file.getName() + "?")
-                            .setMessage("The original ZIP and saved games won't be deleted.")
-                            .setPositiveButton("Remove", (d, w) -> showLibrary(file.delete() ? "Local copy removed." : "Couldn't remove this ZIP."))
+                    new AlertDialog.Builder(this).setTitle("Remove " + catalog.game(file).title(library.chineseNames()) + "?")
+                            .setMessage("The original file and saved games won't be deleted.")
+                            .setPositiveButton("Remove", (d, w) -> showLibrary(file.delete() ? "Local copy removed." : "Couldn't remove the local copy."))
                             .setNegativeButton("Cancel", null).show();
                     break;
                 default: return false;
@@ -397,14 +397,15 @@ public final class MainActivity extends Activity implements GameSession.Callback
         catch (android.content.ActivityNotFoundException unavailable) { exportPath = null; toast("No file picker is available."); }
     }
 
-    private void chooseZips() {
+    private void chooseGames() {
         if (importing || game != null) return;
         library.hideKeyboard();
+        // Providers often label .nes as application/octet-stream or use no NES MIME type.
+        // Keep the picker unfiltered and let the importer check the selected bytes.
         Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT)
                 .setType("*/*").addCategory(Intent.CATEGORY_OPENABLE)
-                .putExtra(Intent.EXTRA_LOCAL_ONLY, true).putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
-                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-        try { startActivityForResult(pick, PICK_ZIPS); }
+                .putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        try { startActivityForResult(pick, PICK_GAMES); }
         catch (android.content.ActivityNotFoundException unavailable) {
             showLibrary("This device doesn't have a system file picker.");
         }
@@ -418,7 +419,11 @@ public final class MainActivity extends Activity implements GameSession.Callback
     @Override protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
         if (libraryTools.result(request, result, data)) return;
-        if (result != RESULT_OK || data == null) return;
+        if (result != RESULT_OK) return;
+        if (data == null) {
+            if (request == PICK_GAMES) noDocumentSelected();
+            return;
+        }
         Uri chosenUri = data.getData();
         if (request == PICK_ART || request == EXPORT_SHOT) {
             File file = request == PICK_ART ? artSet == null ? null : catalog.cover(artSet)
@@ -470,7 +475,7 @@ public final class MainActivity extends Activity implements GameSession.Callback
             });
             return;
         }
-        if (request != PICK_ZIPS) return;
+        if (request != PICK_GAMES) return;
         LinkedHashSet<Uri> urls = new LinkedHashSet<>();
         ClipData set = data.getClipData();
         if (data.getData() != null) urls.add(data.getData());
@@ -480,12 +485,19 @@ public final class MainActivity extends Activity implements GameSession.Callback
                 if (uri != null) urls.add(uri);
             }
         }
-        if (urls.isEmpty()) return;
+        if (urls.isEmpty()) {
+            noDocumentSelected();
+            return;
+        }
         if (urls.size() > MAX_BATCH || (set != null && set.getItemCount() > MAX_BATCH)) {
             showLibrary("Select up to " + MAX_BATCH + " game files at a time.");
             return;
         }
         startGameImport(new ArrayList<>(urls), null);
+    }
+
+    private void noDocumentSelected() {
+        if (!importing && game == null) showLibrary("The picker didn't return a file. Try Downloads or Browse folder.");
     }
 
     private void startGameImport(List<Uri> chosen, String note) {
@@ -501,29 +513,15 @@ public final class MainActivity extends Activity implements GameSession.Callback
         ConsoleStore index = null;
         try { index = catalog.consoleSets(); }
         catch (IOException unavailable) { /* An unavailable index must not block arcade ZIP imports. */ }
-        RomStore.ZipName zipName = index == null ? null : index::archiveTarget;
         for (Uri uri : chosen) {
             if (Thread.currentThread().isInterrupted()) return;
             try {
-                if (!"content".equals(uri.getScheme())) throw new IOException("Choose a file through the system picker.");
-                String name = null;
-                try (Cursor cursor = getContentResolver().query(uri, new String[] {OpenableColumns.DISPLAY_NAME}, null, null, null)) {
-                    if (cursor != null && cursor.moveToFirst()) name = cursor.getString(0);
-                }
-                if (name != null && name.toLowerCase(java.util.Locale.ROOT).endsWith(".fba")) {
-                    if (why == null) why = "Old .fba cache files aren't supported. Choose the matching FBNeo ZIP instead.";
-                    continue;
-                }
-                if (ConsoleSystem.isDisc(name)) {
-                    if (why == null) why = "CD disc images aren't supported by this app build yet.";
-                    continue;
-                }
+                if (!"content".equals(uri.getScheme())) throw new ConsoleStore.Mismatch("Choose a file through the Android picker.");
+                String name = documentName(uri);
                 try (InputStream in = getContentResolver().openInputStream(uri)) {
-                    if (in == null) throw new IOException("Couldn't read the selected file.");
-                    if (ConsoleSystem.isRaw(name)) {
-                        if (index == null) throw new ConsoleStore.Mismatch("The FBNeo console compatibility list couldn't be read.");
-                        index.importRaw(roms.toPath(), name, in);
-                    } else if (ConsoleStore.isFirmware(RomStore.importZip(roms.toPath(), name, in, zipName))) bios++;
+                    String saved = GameImport.add(roms.toPath(), name, in, index);
+                    if (ConsoleStore.isFirmware(saved)) bios++;
+                    else catalog.rememberCartridgeName(saved, name);
                 }
                 added++;
             } catch (ConsoleStore.Mismatch mismatch) {
@@ -531,7 +529,7 @@ public final class MainActivity extends Activity implements GameSession.Callback
             } catch (java.util.zip.ZipException malformed) {
                 if (why == null) why = "This file isn't a readable game ZIP.";
             } catch (IOException | RuntimeException failure) {
-                if (why == null) why = "Choose a correctly named FBNeo ZIP or a matching console ROM. Check available storage.";
+                if (why == null) why = "Couldn't read or copy the file. Check storage or choose a local copy from Downloads.";
             }
         }
         String summary = added == 0 ? "No files added."
@@ -539,6 +537,19 @@ public final class MainActivity extends Activity implements GameSession.Callback
                 : added == bios ? (bios == 1 ? "BIOS added." : bios + " BIOS files added.") + " Add or launch a game."
                 : (added == 1 ? "Game added." : added + " files added.") + " Tap a game to play.";
         finishImport(added > bios, summary + (why == null ? "" : " " + why) + (folderNote == null ? "" : " " + folderNote));
+    }
+
+    private String documentName(Uri uri) {
+        try (Cursor cursor = getContentResolver().query(uri, new String[] {OpenableColumns.DISPLAY_NAME}, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                String name = cursor.getString(0);
+                if (name != null && !name.trim().isEmpty()) return name;
+            }
+        } catch (RuntimeException ignored) { /* Some providers grant data but don't expose metadata. */ }
+        String path = uri.getLastPathSegment();
+        if (path == null) return null;
+        String name = path.substring(Math.max(path.lastIndexOf('/'), path.lastIndexOf(':')) + 1);
+        return ConsoleSystem.isRaw(name) || ConsoleSystem.extension(name).equals("zip") ? name : null;
     }
 
     private void finishImport(boolean added, String summary) {
@@ -785,7 +796,7 @@ public final class MainActivity extends Activity implements GameSession.Callback
             boolean resuming = session.continuing && !loaded;
             File rom = currentFile;
             closeGame(exiting ? "Quick Resume wasn't updated." : null);
-            String title = resuming ? "Couldn't continue" : session.link == null ? "Couldn't play this ZIP" : "Local link ended";
+            String title = resuming ? "Couldn't continue" : session.link == null ? "Couldn't play this game" : "Local link ended";
             AlertDialog.Builder dialog = new AlertDialog.Builder(this).setTitle(title).setMessage(reason).setPositiveButton("OK", null);
             if (resuming) dialog.setNeutralButton("Start normally", (d, w) -> play(rom, session.patch, 0));
             dialog.show();
@@ -1190,7 +1201,7 @@ public final class MainActivity extends Activity implements GameSession.Callback
 
     private void showGuide() {
         new AlertDialog.Builder(this).setTitle("How to play")
-                .setMessage("1. Tap Add games (or + Add) to pick FBNeo ZIPs or matching console ROMs (.nes, .sfc, .md, .gba and more). Keep ZIP set names and add any required parent or BIOS ZIPs. No games or BIOS are included.\n\n"
+                .setMessage("1. Tap Add games (or + Add). Choose a .nes file directly, another supported console ROM, or an FBNeo ZIP. In the picker, open Downloads or your storage folder if the file isn't in Recent. Keep FBNeo ZIP names and add any required parent or BIOS ZIPs.\n\n"
                         + "2. Tap a game. Use the console controls, or Coin then Start for arcade. Touch controls and gamepads can be used together.\n\n"
                         + "3. Tap Pause for cheats, save slots and game settings. Under Controls → Edit layout, drag each control and change its size. Rotate to edit the other layout.\n\n"
                         + "4. Open the ⋮ menu on a game row to manage states, import local notes or cheats, or launch a separate IPS variant.\n\n"

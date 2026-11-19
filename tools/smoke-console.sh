@@ -12,7 +12,7 @@ work=$(mktemp -d)
 trap 'rm -rf -- "$work"' EXIT
 python3 "$root/tests/make_console_fixture.py" "$index" "$work/raw"
 "${JAVA_HOME:+$JAVA_HOME/bin/}javac" --release 8 -encoding UTF-8 -d "$work" \
-  "$app/"{LocalFiles,RomStore,ConsoleStore,ConsoleSystem}.java "$root/tests/ConsoleRouteProbe.java"
+  "$app/"{LocalFiles,RomStore,GameImport,LooseNes,ConsoleStore,ConsoleSystem}.java "$root/tests/ConsoleRouteProbe.java"
 optional=()
 if [[ $# -gt 1 ]]; then optional=("$(realpath -- "$2")"); fi
 "${JAVA_HOME:+$JAVA_HOME/bin/}java" -cp "$work" io.github.ankushui18.fbaoffline.ConsoleRouteProbe \

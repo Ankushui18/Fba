@@ -87,13 +87,22 @@ final class ConsoleStore {
     }
 
     static final class Launch {
-        final File rom, patchedSystem;
+        final File rom, sessionSystem;
         final String driver, firmwareHint;
-        Launch(File rom, File patchedSystem, String driver, Set<String> missingFirmware) {
+        final boolean patched;
+        Launch(File rom, File sessionSystem, String driver, Set<String> missingFirmware, boolean patched) {
             this.rom = rom;
-            this.patchedSystem = patchedSystem;
+            this.sessionSystem = sessionSystem;
             this.driver = driver;
+            this.patched = patched;
             this.firmwareHint = missingFirmware.isEmpty() ? "" : " If needed, add the matching " + String.join(", ", missingFirmware) + " BIOS files.";
+        }
+
+        File saveDirectory(File shared, File libraryArchive) {
+            // Alternate and loose cartridges use their own battery data, even if
+            // they share a common FBNeo driver with another local cartridge.
+            String name = libraryArchive.getName();
+            return sessionSystem == null ? shared : new File(shared, name.substring(0, name.length() - 4));
         }
     }
 
@@ -169,6 +178,7 @@ final class ConsoleStore {
                 matches = rawMatches(extension, signature, probe.magic, source);
                 offset = COPIER_HEADER;
             }
+            if (matches.isEmpty() && extension.equals("nes")) return LooseNes.importCartridge(library, source);
             Entry entry = choose(matches, name.substring(0, name.lastIndexOf('.')));
             String target = entry.archive();
             Path archive = library.resolve(target);
@@ -276,6 +286,7 @@ final class ConsoleStore {
     /** Expose only the current game/parents/BIOS in the folder name the pinned core uses for routing. */
     Launch stage(File rom, Path session) throws IOException {
         String name = RomStore.archiveName(rom.getName());
+        if (LooseNes.isArchive(name)) return LooseNes.stage(rom, session, name);
         Entry entry = drivers.get(name.substring(0, name.length() - 4));
         if (entry == null || entry.firmware || isFirmware(name)) throw new Mismatch("Re-add a matching FBNeo console game ZIP or ROM file.");
         Path folder = Files.createDirectory(session.resolve(entry.system.folder));
@@ -307,7 +318,7 @@ final class ConsoleStore {
             stageFile(target, patch);
             patched = system.toFile();
         }
-        return new Launch(target.toFile(), patched, entry.system.prefix + "_" + shortSet, missingFirmware);
+        return new Launch(target.toFile(), patched, entry.system.prefix + "_" + shortSet, missingFirmware, patched != null);
     }
 
     private static void stageFile(Path source, Path target) throws IOException {

@@ -13,11 +13,12 @@ trap 'rm -rf -- "$work"' EXIT
 javac="${JAVA_HOME:+$JAVA_HOME/bin/}javac"
 java="${JAVA_HOME:+$JAVA_HOME/bin/}java"
 app="$main/java/io/github/ankushui18/fbaoffline"
-"$javac" -encoding UTF-8 --release 8 -d "$work" "$app"/{RomStore,ConsoleStore,ConsoleSystem,Joypad,PadBindings,AutoFire,PadLayout,PadInput,PadProfile,StateStore,QuickResumeStore,LocalFiles,BackupStore,BackupSettings,IpsPatch,PatchStore,LegacyIps,UserCheats,RomNotes,LegacySkinFiles,LatestFrame}.java \
-  "$root/tests/RomStoreTest.java" "$root/tests/ConsoleStoreTest.java" "$root/tests/PadTest.java" "$root/tests/StateStoreTest.java" "$root/tests/BackupStoreTest.java" \
+"$javac" -encoding UTF-8 --release 8 -d "$work" "$app"/{RomStore,GameImport,LooseNes,ConsoleStore,ConsoleSystem,Joypad,PadBindings,AutoFire,PadLayout,PadInput,PadProfile,StateStore,QuickResumeStore,LocalFiles,BackupStore,BackupSettings,IpsPatch,PatchStore,LegacyIps,UserCheats,RomNotes,LegacySkinFiles,LatestFrame}.java \
+  "$root/tests/RomStoreTest.java" "$root/tests/LooseNesTest.java" "$root/tests/ConsoleStoreTest.java" "$root/tests/PadTest.java" "$root/tests/StateStoreTest.java" "$root/tests/BackupStoreTest.java" \
   "$root/tests/QuickResumeTest.java" "$root/tests/GameFilesTest.java" "$root/tests/ParityFilesTest.java" "$root/tests/LatestFrameTest.java"
 "$java" -cp "$work" io.github.ankushui18.fbaoffline.RomStoreTest
 "$java" -cp "$work" io.github.ankushui18.fbaoffline.ConsoleStoreTest "$main/assets/console-sets.tsv"
+"$java" -cp "$work" io.github.ankushui18.fbaoffline.LooseNesTest "$main/assets/console-sets.tsv"
 "$java" -cp "$work" io.github.ankushui18.fbaoffline.PadTest
 "$java" -cp "$work" io.github.ankushui18.fbaoffline.StateStoreTest
 "$java" -cp "$work" io.github.ankushui18.fbaoffline.BackupStoreTest

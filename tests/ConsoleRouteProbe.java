@@ -25,32 +25,35 @@ public final class ConsoleRouteProbe {
 
     private Path add(Path file, String expected) throws Exception {
         try (InputStream in = Files.newInputStream(file)) {
-            String saved = store.importRaw(library, file.getFileName().toString(), in);
-            if (!saved.equals(expected + ".zip")) throw new AssertionError(saved);
+            String saved = GameImport.add(library, file.getFileName().toString(), in, store);
+            if (expected == null ? !LooseNes.isArchive(saved) : !saved.equals(expected + ".zip")) throw new AssertionError(saved);
             return library.resolve(saved);
         }
     }
 
     private void launch(BufferedWriter out, String title, String mode, Path zip) throws Exception {
         ConsoleStore.Launch launch = store.stage(zip.toFile(), Files.createDirectory(root.resolve(title)));
-        Path save = Files.createDirectory(saves.resolve(title));
-        if (mode.equals("ninja") != (launch.patchedSystem != null)) throw new AssertionError("Patched mode must be scoped to the verified alternate dump.");
+        Path save = Files.createDirectories(launch.saveDirectory(saves.toFile(), zip.toFile()).toPath());
+        if (mode.equals("ninja") != launch.patched) throw new AssertionError("Patched mode must be scoped to the verified alternate dump.");
+        if (LooseNes.isArchive(zip.getFileName().toString()) && (launch.sessionSystem == null || !launch.rom.getName().endsWith(".dat"))) {
+            throw new AssertionError("Loose NES import must stage its own descriptor and system directory.");
+        }
+        if (mode.equals("bad-crc")) {
+            Path descriptor = launch.rom.toPath();
+            String bad = new String(Files.readAllBytes(descriptor), StandardCharsets.US_ASCII)
+                    .replaceFirst("0x[0-9a-f]{8} BRF_ESS", "0x12345678 BRF_ESS");
+            Files.write(descriptor, bad.getBytes(StandardCharsets.US_ASCII));
+        }
         if (mode.equals("missing") != !launch.firmwareHint.isEmpty()) {
             // The GBA BIOS is optional and may legitimately be absent.
             if (!title.equals("gba")) throw new AssertionError("Unexpected BIOS requirements for " + title + ": " + launch.firmwareHint);
         }
         out.write(String.join("\t", title, mode, launch.rom.getAbsolutePath(),
-                launch.patchedSystem == null ? system.toString() : launch.patchedSystem.getAbsolutePath(), save.toString()));
+                launch.sessionSystem == null ? system.toString() : launch.sessionSystem.getAbsolutePath(), save.toString()));
         out.newLine();
     }
 
     private void verify(Path localNinja) throws Exception {
-        try (InputStream in = Files.newInputStream(raw.resolve("Unverified NES collision.nes"))) {
-            try {
-                store.importRaw(library, "Ninja Gaiden (USA).nes", in);
-                throw new AssertionError("A checksum alone must not enable alternate dump mode.");
-            } catch (ConsoleStore.Mismatch expected) { /* Strong hash did not match. */ }
-        }
         try (BufferedWriter out = Files.newBufferedWriter(root.resolve("launches.tsv"), StandardCharsets.UTF_8)) {
             Path nes = add(raw.resolve("Cartridge.nes"), "nes_smb");
             launch(out, "nes", "ok", nes);
@@ -65,6 +68,19 @@ public final class ConsoleRouteProbe {
                 if (!bios.equals("bios_fds_fdsbios.zip")) throw new AssertionError(bios);
             }
             launch(out, "fds-with-bios", "ok", disk);
+            launch(out, "loose-nrom", "local-battery", add(raw.resolve("Homebrew.nes"), null));
+            launch(out, "loose-no-extension", "local-battery", add(raw.resolve("Headerless filename"), null));
+            launch(out, "loose-mmc1", "local-battery", add(raw.resolve("MMC1.NES"), null));
+            launch(out, "loose-uxrom", "local", add(raw.resolve("UxROM.nes"), null));
+            Path cnrom = add(raw.resolve("CNROM.nes"), null);
+            launch(out, "loose-bad-crc", "bad-crc", cnrom);
+            launch(out, "loose-cnrom", "local", cnrom);
+            launch(out, "loose-mmc3-pal", "local-pal", add(raw.resolve("MMC3 PAL.nes"), null));
+            launch(out, "loose-axrom", "local", add(raw.resolve("AxROM.nes"), null));
+            launch(out, "loose-gxrom", "local", add(raw.resolve("GxROM.nes"), null));
+            // A synthetic CRC collision must launch only through the separate generic path.
+            launch(out, "loose-unverified-collision", "local", add(raw.resolve("Unverified NES collision.nes"), null));
+            launch(out, "nes-after-loose", "ok", nes);
             if (localNinja != null) {
                 Path ninja = add(localNinja, "nes_ninjagaiden_alt_ed1d282b");
                 try (ZipFile zip = new ZipFile(ninja.toFile()); InputStream content = zip.getInputStream(zip.entries().nextElement())) {

@@ -222,12 +222,12 @@ final class GameSession implements Runnable {
                 consoleRun = Files.createTempDirectory(app.getCacheDir().toPath(), "console-run-").toFile();
                 staged = catalog.consoleSets().stage(rom, consoleRun.toPath());
                 launchRom = staged.rom;
-                if (staged.patchedSystem != null) {
-                    system = staged.patchedSystem;
-                    saves = new File(saves, GameCatalog.setName(rom.getName()));
+                if (staged.sessionSystem != null) {
+                    system = staged.sessionSystem;
+                    saves = staged.saveDirectory(saves, rom);
                     Files.createDirectories(saves.toPath());
-                    patched = true;
                 }
+                patched = staged.patched;
                 if (stopping) return;
             }
             if (link == null) try {

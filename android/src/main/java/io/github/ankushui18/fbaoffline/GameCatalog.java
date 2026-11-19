@@ -1,6 +1,7 @@
 package io.github.ankushui18.fbaoffline;
 
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.os.Handler;
@@ -29,6 +30,7 @@ import java.util.zip.ZipFile;
 final class GameCatalog {
     private final Context app;
     private final File coverDir;
+    private final SharedPreferences cartridgeNames;
     private final Handler main = new Handler(Looper.getMainLooper());
     private final ExecutorService worker = Executors.newSingleThreadExecutor(task -> new Thread(task, "game-art"));
     private volatile Map<String, Game> games = Collections.emptyMap();
@@ -55,6 +57,7 @@ final class GameCatalog {
     GameCatalog(Context context) {
         app = context.getApplicationContext();
         coverDir = new File(app.getNoBackupFilesDir(), "screenshots");
+        cartridgeNames = app.getSharedPreferences("loose_nes_names", Context.MODE_PRIVATE);
     }
 
     void load(Runnable done) {
@@ -91,8 +94,18 @@ final class GameCatalog {
 
     static String setName(String filename) { return filename.substring(0, filename.length() - 4); }
 
+    void rememberCartridgeName(String archive, String displayName) {
+        if (!LooseNes.isArchive(archive) || cartridgeNames.contains(archive)) return;
+        String title = LooseNes.displayName(displayName);
+        if (!title.isEmpty()) cartridgeNames.edit().putString(archive, title).apply();
+    }
+
     Game game(File archive) {
-        String name = setName(archive.getName());
+        String filename = archive.getName(), name = setName(filename);
+        if (LooseNes.isArchive(filename)) {
+            String title = cartridgeNames.getString(filename, "NES cartridge");
+            return new Game(new String[] {name, title, "", ConsoleSystem.NES.label, "", "", "", "", ""});
+        }
         Game game = games.get(name);
         return game != null ? game : new Game(new String[] {name, name, "", "", "", "", "", "", ""});
     }

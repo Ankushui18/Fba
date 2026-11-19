@@ -1,12 +1,12 @@
-# FBA Arcade 0.5.6 — Android acceptance checks
+# FBA Arcade 0.5.7 — Android acceptance checks
 
 The signed ARM64 APK passed build and host verification. No Android device
 was connected. These checks verify Android UI/SAF, input, audio, and hardware
-connectivity on a phone or tablet. Use a legally obtained ROM set for the
-pinned FBNeo revision, including its BIOS/parent dependencies.
+connectivity on a phone or tablet. Use legally obtained cartridges or ROM sets
+for the pinned FBNeo revision, including any required BIOS/parent dependencies.
 
-1. **Update in place.** Install the [0.5.6 APK](../README.md#install-and-play)
-   over 0.5.5, 0.5.4, 0.5.3, 0.5.2 or 0.5.1 Recovery Preview. Do not uninstall first. Check that
+1. **Update in place.** Install the [0.5.7 APK](../README.md#install-and-play)
+   over 0.5.6, 0.5.5, 0.5.4, 0.5.3, 0.5.2 or 0.5.1 Recovery Preview. Do not uninstall first. Check that
    ROMs, saved folder access, Favorites, list/grid, Quick Resume and a manual
    save still work. Any original Recovery or FBA4droid install should be
    untouched. Start a solo game without a network connection or a Bluetooth/Local
@@ -31,8 +31,13 @@ pinned FBNeo revision, including its BIOS/parent dependencies.
    from **Add games** and the folder picker. Confirm the game's title and
    **NES / Famicom** label, then use Start and the D-pad and check manual save/load
    and Quick Resume. Re-add the same `.nes` and check the slot still loads.
-   Try the correct `smb.zip` or `nes_smb.zip`, a different-revision `.nes`, and
-   a file merely renamed `.nes`. In a name collision (e.g. NES and arcade
+   Try the correct `smb.zip` or `nes_smb.zip` and an ordinary `.nes` not in the
+   DAT (e.g. a homebrew NROM cartridge). From Add games, browse directly to the
+   file's Downloads or storage folder, including a provider that reports a
+   generic file type. Check it appears by title and runs without a ZIP or BIOS.
+   Re-add under another filename and check for one row and working saves. A
+   renamed text file and a truncated `.nes` should be rejected with specific
+   guidance. In a name collision (e.g. NES and arcade
    `1942.zip`), both matching sets should be listed separately. Check that the
    arcade game's controls, saves and Link access did not change. Add a mixed
    selection with matching `.sfc` (SNES), `.md`/`.bin` (Genesis), `.gba` and `.fds`
@@ -111,10 +116,10 @@ pinned FBNeo revision, including its BIOS/parent dependencies.
     The Quick Resume checkpoint and its toggle must remain local. Cancel a
     picker/confirmation and try a plain ROM ZIP and a truncated copy of the backup;
     none should change the current slots or settings.
-11. **Local multiplayer, two phones.** Install the same 0.5.6 APK on both.
+11. **Local multiplayer, two phones.** Install the same 0.5.7 APK on both.
     See [Link setup](LINK_PLAY.md). Test Wi-Fi P1/P2 and paired Bluetooth P1/P2.
     Check separate inputs, paired pause/resume and safe exit. Try different
-    filters on the two phones. Check a mixed 0.5.5/0.5.6 pair (same protocol), a
+    filters on the two phones. Check a mixed 0.5.6/0.5.7 pair (same protocol), a
     rejected 0.4.0 peer, wrong room code, different ZIP revision, permission
     denial, cancellation and network loss or app background. Check that the solo
     Quick Resume checkpoint and other solo data stay unchanged after a Link match.

@@ -4,7 +4,7 @@ FBA Arcade uses the [FinalBurn Neo Libretro port at `2da48555`](https://github.c
 
 ## Add a game
 
-Use **Add games** (or **+ Add** in the library). Select matching console files or FBNeo ZIPs exactly as you would select arcade ZIPs. You don't need to make system folders, rename a loose ROM, or pick a core. A recognized game is shown with its system label. A correct FBNeo ZIP can use its bare set name or the system-prefixed name in the table.
+Use **Add games** (or **+ Add** in the library). Select a `.nes` file, another matching console file or an FBNeo set ZIP. If the file is missing in Android’s Recent view, open Downloads or the folder where you saved it. You don't need to make system folders, rename a loose ROM, or pick a core. A recognized game is shown with its system label. A correct FBNeo ZIP can use its bare set name or the system-prefixed name in the table.
 
 | System | Common loose files | ZIP prefix | BIOS notes |
 | --- | --- | --- | --- |
@@ -28,11 +28,19 @@ Use **Add games** (or **+ Add** in the library). Select matching console files o
 | MSX1 | `.rom`, `.cas`, `.mx1` | `msx_` | `msx.zip`; USB/Bluetooth keyboard for games that need keys |
 | ZX Spectrum | `.tap`, `.tzx`, `.z80` | `spec_` | `spectrum.zip`, `spec128.zip` or `spec1282a.zip`; USB/Bluetooth keyboard as needed |
 
-Shared `.bin` and `.rom` suffixes are identified by size and CRC, not their name. Import the matching FBNeo ZIP for sets with more than one game file. If several drivers use identical bytes, the system-prefixed ZIP disambiguates. If a set needs a BIOS or parent, add the matching ZIP in **Add games**. Console BIOS ZIPs are dependencies, not playable rows. Owners supply their own copies; this app does not distribute games or original BIOS archives.
+Shared `.bin` and `.rom` suffixes are identified by content: NES magic for iNES cartridges, or size and CRC for other sets. Import the matching FBNeo ZIP for sets with more than one game file. If several drivers use identical bytes, the system-prefixed ZIP disambiguates. If a set needs a BIOS or parent, add the matching ZIP in **Add games**. Console BIOS ZIPs are dependencies, not playable rows. Owners supply their own copies; this app does not distribute games or original BIOS archives.
+
+### Direct NES files
+
+**0.5.7** can import ordinary `.nes` files even when the CRC isn't in FBNeo's DAT. Select the extracted `.nes` directly; you don't need to rename it, make a special ZIP, or add a BIOS. A known FBNeo match still takes priority, keeping the old library and save identity. Add games can also recognize the iNES signature when the Android provider omits the filename or reports a generic `.bin` / `.rom` suffix.
+
+The direct path accepts standard home NES/Famicom iNES and NES 2.0 cartridge layouts for mappers **0, 1, 2, 3, 4, 7 and 66** (NROM, MMC1, UxROM, CNROM, MMC3, AxROM and GxROM). The header, declared program/graphics sizes and memory layout must be supported. It rejects truncated files, other mappers and unsupported NES 2.0 submappers, extended layouts and special controllers. Some boards/dumps need FBNeo's per-game quirks; a matching set ZIP remains an option. UNIF and FDS continue to use matching sets.
+
+FBNeo's normal loader expects a named set archive. For a non-DAT `.nes`, the app keeps the bytes unchanged in a private archive identified by SHA-256, and generates a one-cartridge RomData descriptor at launch. FBNeo's existing NES mapper code loads it and still checks its size and CRC. The descriptor isn't supplied by the user and is removed with the session. Separate ROM identities keep battery data and states from mixing; re-adding the same bytes under a different filename keeps the save identity.
 
 ### Which dumps work?
 
-Most files must match the **pinned FBNeo** revision, even if a different dump or hack works in another emulator. Examples:
+Other systems and the normal FBNeo ZIP path still require the pinned set revision, even if a different dump or hack works in another emulator. Examples of exact matching sets:
 
 | Game | Bare / prefixed ZIP | Loose bytes | CRC-32 |
 | --- | --- | ---: | --- |
@@ -48,4 +56,4 @@ One verified NES alternate dump, **Ninja Gaiden (USA)** (`ED1D282B`), imports as
 
 - Arcade ZIPs and arcade Link still use the existing flow. Console play is solo, with digital touch/gamepad controls, manual states and optional Quick Resume where the FBNeo driver supports them. MSX1 and Spectrum can also receive physical keyboard keys. No full touch keyboard, lightgun, mouse, or specialty controller support is claimed. Some titles may need input hardware not provided by the frontend.
 - The core also includes the **Neo Geo CD, PC Engine CD / TurboGrafx-CD, and Sega CD / Mega-CD** drivers. **The app does not import CD images yet**: those need separate disc-image routing (including companion tracks when applicable), firmware and lifecycle tests. DAT cartridge support does not imply Game Boy / Game Boy Color, N64, or arbitrary games for other systems.
-- `tools/smoke-console.sh` checks the production importer and session paths against the pinned, patched Linux core. Synthetic NES, SNES, Genesis, SMS, GBA and FDS fixtures verify video, PCM, digital inputs and save/load, including missing/added FDS BIOS and switching systems in one process. An optional local-file run verified the specific Ninja Gaiden alternate dump. These are host tests, not phone gameplay tests or a test of every dump in the DAT.
+- `tools/smoke-console.sh` checks the production importer and session paths against the pinned, patched Linux core. Synthetic NES, SNES, Genesis, SMS, GBA and FDS fixtures verify video, PCM, digital inputs and save/load, including missing/added FDS BIOS and switching systems in one process. Loose iNES/NES 2.0 fixtures for all seven direct mappers also check an actual Start response, audio, reset, state serialization, battery writes, PAL timing and rejection of mismatched CRCs. An optional local-file run verified the specific Ninja Gaiden alternate dump. These are host tests, not phone gameplay tests or a test of every dump in the DAT.

@@ -95,7 +95,7 @@ final class RomFolders {
         if (page.folder.tree.equals(saved())) dialog.setNeutralButton("Forget", (d, w) -> {
             prefs.edit().remove(SAVED_FOLDER).apply();
             release(page.folder.tree);
-            host.note("Folder access removed. Imported ZIPs and saves were kept.");
+            host.note("Folder access removed. Imported games and saves were kept.");
         });
         if (page.listing == null) {
             dialog.setMessage("Couldn't read this folder. If it was moved or access changed, choose it again.");
@@ -160,6 +160,7 @@ final class RomFolders {
     }
 
     private static boolean isGameFile(String name) {
+        name = name.trim();
         if (ConsoleSystem.isDisc(name)) return false;
         if (ConsoleSystem.isRaw(name)) return true;
         try { RomStore.archiveName(name); return true; }

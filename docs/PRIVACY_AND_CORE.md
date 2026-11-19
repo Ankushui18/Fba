@@ -189,13 +189,21 @@ flavors share their own ID and signer, so they replace each other. The signed
 versionCode (5 and 6), so 0.5.1 can update 0.5.0 or 0.4.0 Recovery without
 uninstalling.
 
-The current 0.5.6 APK uses launcher label **FBA Arcade**, version code 11,
+The current 0.5.7 APK uses launcher label **FBA Arcade**, version code 12,
 and the same app ID (`io.github.ankushui18.fbaarcade.recovery.preview`) and
 signer (SHA-256 `d8a45e30010cfbee84fef2227b3e0c98e585046658c0a0582df0845d8fd0d396`)
-as 0.5.5 through 0.5.1 Recovery Preview. It cannot update original Recovery.
+as 0.5.6 through 0.5.1 Recovery Preview. It cannot update original Recovery.
 The console importer adds no permissions or changes to the Link wire protocol.
 It wraps a recognized loose game in a private ZIP and stages the game and
 imported dependencies under the expected system folder for the duration of
 play. The library retains its stable archive names for saves. The specific
 Ninja Gaiden alternate dump is checked by SHA-256 and uses a session-private
 FBNeo override, not a global exception to checksum checks.
+
+Standard `.nes` files outside the indexed sets can use the existing FBNeo
+RomData interface. The app verifies the header, size, CRC and content-based
+archive identity, and generates the fixed descriptor in private session
+storage. It doesn't load user-supplied DAT files or enable patched-ROM mode
+for ordinary direct imports. This release changes no native core or Link
+protocol code. Add games accepts files selected through Android document
+providers; it doesn't upload ROMs or fetch them from a server itself.

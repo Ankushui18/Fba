@@ -42,7 +42,7 @@ import static io.github.ankushui18.fbaoffline.ArcadeUi.*;
 /** The library starts with one import action, then shows games and optional Continue. */
 final class LibraryScreen extends LinearLayout {
     interface Actions {
-        void importZips();
+        void pickGames();
         void browseFolder();
         void settings();
         void play(File file);
@@ -178,7 +178,7 @@ final class LibraryScreen extends LinearLayout {
         if (Build.VERSION.SDK_INT >= 28) intro.setAccessibilityHeading(true);
         panel.addView(intro);
         ui.space(panel, 8);
-        TextView tip = ui.text("Choose game ZIPs or console ROMs. Games aren't included.", 15, MUTED, false);
+        TextView tip = ui.text("Choose .nes files, other console ROMs, or FBNeo ZIPs. Games aren't included.", 15, MUTED, false);
         tip.setGravity(Gravity.CENTER);
         tip.setLineSpacing(ui.dp(3), 1f);
         panel.addView(tip);
@@ -284,7 +284,7 @@ final class LibraryScreen extends LinearLayout {
     }
 
     private void importGames() {
-        if (!importing) { hideKeyboard(); actions.importZips(); }
+        if (!importing) { hideKeyboard(); actions.pickGames(); }
     }
 
     void setInsets(int left, int top, int right, int bottom) {

@@ -64,7 +64,7 @@ public final class ConsoleStoreTest {
 
             index.importRaw(library, "Disk.fds", bytes(fds));
             ConsoleStore.Launch unavailable = index.stage(library.resolve("fds_disk.zip").toFile(), Files.createDirectory(root.resolve("missing-bios")));
-            check(unavailable.firmwareHint.contains("fdsbios.zip") && unavailable.patchedSystem == null, "firmware guidance without disabling CRC checks");
+            check(unavailable.firmwareHint.contains("fdsbios.zip") && unavailable.sessionSystem == null && !unavailable.patched, "firmware guidance without disabling CRC checks");
             check("bios_fds_fdsbios.zip".equals(importZip(index, library, "fdsbios.zip", zip("fdsbios.nes", bios))), "BIOS stored as non-playable dependency");
             check("fds_parent.zip".equals(importZip(index, library, "fds_parent.zip", zip("parent.fds", linked))), "matching parent ZIP");
             ConsoleStore.Launch ready = index.stage(library.resolve("fds_disk.zip").toFile(), Files.createDirectory(root.resolve("ready")));
