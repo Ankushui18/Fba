@@ -14,7 +14,7 @@ for SNES, Sega Genesis / Mega Drive, GBA and other supported systems.
 
 ## Install and play
 
-[**Download FBA Arcade 0.5.9 Preview APK**](artifacts/fba-arcade-0.5.9-preview-link-arm64-v8a-test.apk)
+[**Download FBA Arcade 0.5.9 Preview APK**](https://github.com/Ankushui18/Fba/raw/3f7c62421e290c1f57f641840617d315acf46707/artifacts/fba-arcade-0.5.9-preview-link-arm64-v8a-test.apk)
 — signed, 64-bit ARM, **Android 8 or later**. One APK includes offline solo play,
 local Wi-Fi/Bluetooth arcade multiplayer, [Quick Resume](#quick-resume), and
 [Backup & restore](#back-up-saves-and-settings). There is no separate Offline build.

@@ -28,7 +28,7 @@ summary; the full upstream text and each component's own license control.
 | --- | --- |
 | FBNeo 1.0.0.03 (Libretro port) | [Upstream snapshot `2da48555`](https://github.com/libretro/FBNeo/tree/2da48555c13ce5d011edf2d6ec829b7393c070af) |
 | Changes to FBNeo in this APK | [`fbneo-session.patch`](android/patches/fbneo-session.patch): deterministic startup for Link and safe driver switching; [`fbneo-hiscore.patch`](android/patches/fbneo-hiscore.patch): ignore incomplete or mismatched score files |
-| Android frontend, build scripts and bundled HQx source | This source tree, `android/src`, `tools` and `android/third_party/hqx`; see [build instructions](README.md#build-and-verify) |
+| Android frontend, build scripts and bundled HQx source | [FBA Arcade build revision `3f7c624`](https://github.com/Ankushui18/Fba/tree/3f7c62421e290c1f57f641840617d315acf46707); see [build instructions](README.md#build-and-verify) |
 
 The build scripts apply these patches to a separate checkout. The APK includes
 `assets/CORE-SOURCE.txt`, the unmodified `assets/FBNeo-LICENSE.txt`,
