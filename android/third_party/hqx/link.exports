@@ -1,0 +1,4 @@
+{
+    global: hqxInit; hq2x_32; hq3x_32; hq4x_32; hq2x_32_rb; hq3x_32_rb; hq4x_32_rb;
+    local: *;
+};

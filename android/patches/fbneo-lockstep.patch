@@ -1,0 +1,9 @@
+--- a/src/burner/libretro/libretro.cpp
++++ b/src/burner/libretro/libretro.cpp
+@@ -1329,2 +1329,6 @@
+ 	bLibretroSupportsSavestateContext = environ_cb(RETRO_ENVIRONMENT_GET_SAVESTATE_CONTEXT, NULL);
++	// The lockstep frontend requests deterministic driver initialization, not just state scans.
++	retro_savestate_context context = RETRO_SAVESTATE_CONTEXT_NORMAL;
++	kNetGame = (bLibretroSupportsSavestateContext && environ_cb(RETRO_ENVIRONMENT_GET_SAVESTATE_CONTEXT, &context)
++	            && context == RETRO_SAVESTATE_CONTEXT_ROLLBACK_NETPLAY) ? 1 : 0;
+ 	if (!bLibretroSupportsSavestateContext)

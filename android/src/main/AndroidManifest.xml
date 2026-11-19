@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="io.github.ankushui18.fbaoffline">
+    <application
+        android:allowBackup="false"
+        android:debuggable="false"
+        android:extractNativeLibs="false"
+        android:icon="@drawable/legacy_ui_launcher"
+        android:roundIcon="@drawable/legacy_ui_launcher_round"
+        android:label="FBA Arcade"
+        android:theme="@style/ArcadeTheme"
+        android:usesCleartextTraffic="false">
+        <activity
+            android:name="io.github.ankushui18.fbaoffline.MainActivity"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+            android:enableOnBackInvokedCallback="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

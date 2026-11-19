@@ -1,0 +1,13 @@
+.cache/
+/build/
+/dist/
+**/__pycache__/
+*.jks
+*.keystore
+/artifacts/*.apk
+/artifacts/*.idsig
+*.p12
+*.pfx
+# Optional local inputs for the historical audit; not Preview downloads.
+/fba4droid_18644.apk
+/fba4droid_18644.zip

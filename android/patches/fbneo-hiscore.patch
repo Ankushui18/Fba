@@ -1,0 +1,29 @@
+--- a/src/burn/hiscore.cpp
++++ b/src/burn/hiscore.cpp
+@@ -431,2 +431,18 @@
+ 
++#ifdef __LIBRETRO__
++	// This is persistent data, separate from the pinned hiscore.dat. A short
++	// write or an incompatible table must not be copied into the score ranges.
++	fp = nHiscoreNumRanges ? _tfopen(szFilename, _T("rb")) : NULL;
++	if (fp) {
++		bool complete = true;
++		for (UINT32 i = 0; i < nHiscoreNumRanges && complete; i++) {
++			_HiscoreMemRange &range = HiscoreMemRange[i];
++			complete = range.Data && fread(range.Data, 1, range.NumBytes, fp) == range.NumBytes;
++		}
++		complete = complete && fgetc(fp) == EOF && feof(fp) && !ferror(fp);
++		fclose(fp);
++		for (UINT32 i = 0; i < nHiscoreNumRanges; i++) HiscoreMemRange[i].Loaded = complete;
++	}
++	LetsTryToApply = 0;
++#else
+ 	fp = _tfopen(szFilename, _T("rb"));
+@@ -463,2 +479,3 @@
+ 	}
++#endif
+ 
+@@ -712,2 +729,3 @@
+ 		HiscoreMemRange[i].Applied = 0;
++		HiscoreMemRange[i].NoConfirm = 0;
+ 
