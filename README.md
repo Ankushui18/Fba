@@ -19,6 +19,13 @@ existing install if it uses the same signer.
 | `fba-arcade-0.5.1-recovery-arm64-v8a-test.apk` | Offline play, **zero Android permissions**. |
 | `fba-arcade-0.5.1-recovery-link-arm64-v8a-test.apk` | Optional [Link beta](docs/LINK_PLAY.md), including all solo features. Two-phone Android transport testing is pending. |
 
+**Recovery Preview (separate install):** if the original Recovery signing key
+isn't available, build with `ARCADE_RECOVERY=preview`. The output is
+`fba-arcade-0.5.1-recovery-preview-arm64-v8a-test.apk` (or `-preview-link-`
+for local multiplayer). It has a different app ID and key and can be installed
+next to Recovery without deleting it. It does not copy Recovery's private ROMs,
+saves or settings. Download the `.apk`; a `SHA256SUMS.txt` file only lists hashes.
+
 The previous [0.4.0 Recovery prerelease](https://github.com/Ankushui18/Fba/releases/tag/v0.4.0-recovery)
 is unchanged. See the [feature-by-feature 1.77 comparison](docs/FBA4DROID_PARITY.md)
 for the restored features and remaining compatibility gaps.
@@ -136,10 +143,13 @@ separate two-core protocol test, see [Link setup](docs/LINK_PLAY.md#host-test).
 
 **Signing:** By default the scripts use a local test key under `.cache/signing/`
 (never checked in) and the ID `io.github.ankushui18.fbaarcade.test`. Keep the
-matching key for upgrades. Use `ARCADE_RECOVERY=1 ./tools/build-apk.sh` (also set
-`ARCADE_LINK=1` for Link beta) to build a separate install with the ID
-`io.github.ankushui18.fbaarcade.recovery` and its own local test key. This does
-not migrate your old app's private data. `APK_KEYSTORE` and `APK_KEY_ALIAS` use
+matching key for upgrades. `ARCADE_RECOVERY=1 ./tools/build-apk.sh` builds
+`io.github.ankushui18.fbaarcade.recovery` and requires the previously used
+Recovery test key rather than generating a replacement. Use
+`ARCADE_RECOVERY=preview ./tools/build-apk.sh` without that key to build the
+separate `io.github.ankushui18.fbaarcade.recovery.preview` app. Add `ARCADE_LINK=1`
+for Link beta. Neither package migrates another app's private data.
+`APK_KEYSTORE` and `APK_KEY_ALIAS` use
 your own signer and the original frontend ID `io.github.ankushui18.fbaoffline`;
 the script prompts for the password locally. A new key cannot update an
 existing install.

@@ -25,6 +25,7 @@ recovery=${ARCADE_RECOVERY:-0}
 test_package=io.github.ankushui18.fbaarcade.test
 test_key=arcade-test
 test_cn='FBA Arcade Test Build'
+app_label='FBA Arcade'
 case $recovery in
   0) ;;
   1)
@@ -32,9 +33,21 @@ case $recovery in
     version+=-recovery
     test_package=io.github.ankushui18.fbaarcade.recovery
     test_key=arcade-recovery-test
-    test_cn='FBA Arcade Recovery Test Build'
+    app_label='FBA Arcade Recovery'
+    [[ -f $root/.cache/signing/$test_key.jks ]] || {
+      echo 'The original Recovery key is missing. Use ARCADE_RECOVERY=preview for a separate install.' >&2
+      exit 1
+    }
     ;;
-  *) echo 'ARCADE_RECOVERY must be 0 or 1.' >&2; exit 1 ;;
+  preview)
+    [[ -z ${APK_KEYSTORE:-} ]] || { echo 'Recovery Preview uses its own local test key.' >&2; exit 1; }
+    version+=-recovery-preview
+    test_package=io.github.ankushui18.fbaarcade.recovery.preview
+    test_key=arcade-recovery-preview-test
+    test_cn='FBA Arcade Recovery Preview Test Build'
+    app_label='FBA Arcade Recovery Preview'
+    ;;
+  *) echo 'ARCADE_RECOVERY must be 0, 1, or preview.' >&2; exit 1 ;;
 esac
 manifest_package=()
 if [[ -z ${APK_KEYSTORE:-} ]]; then
@@ -101,8 +114,8 @@ if [[ $variant == link ]]; then
   cp "$root/android/patches/fbneo-lockstep.patch" "$work/assets/FBNeo-LINK.patch"
   printf '\nThis Link build applies FBNeo-LINK.patch to initialize the existing deterministic mode before driver startup.\n' >> "$work/assets/CORE-SOURCE.txt"
 fi
-if [[ $recovery == 1 ]]; then
-  sed 's/android:label="FBA Arcade"/android:label="FBA Arcade Recovery"/' \
+if [[ $recovery != 0 ]]; then
+  sed "s/android:label=\"FBA Arcade\"/android:label=\"$app_label\"/" \
     "$manifest" > "$work/RecoveryManifest.xml"
   manifest="$work/RecoveryManifest.xml"
 fi
@@ -143,6 +156,7 @@ else
   password=(--ks-pass "pass:$test_key" --key-pass "pass:$test_key")
   flavor=test
   if [[ ! -e $ks ]]; then
+    [[ $recovery != 1 ]] || { echo 'Original Recovery key is missing.' >&2; exit 1; }
     mkdir -p "$(dirname -- "$ks")"
     (umask 077; "$JAVA_HOME/bin/keytool" -genkeypair -keystore "$ks" -storetype PKCS12 \
       -storepass "$test_key" -keypass "$test_key" -alias "$key" -keyalg RSA -keysize 3072 \

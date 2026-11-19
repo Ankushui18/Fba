@@ -15,8 +15,12 @@ from link_manifest import LINK_PERMISSIONS
 
 ART_PATHS = {f"res/drawable-nodpi-v4/{name}" for name in ART}
 APP = "io.github.ankushui18.fbaoffline"  # Java/JNI namespace, independent of installed application ID
-RECOVERY_APP = "io.github.ankushui18.fbaarcade.recovery"
-PACKAGES = {APP, "io.github.ankushui18.fbaarcade.test", RECOVERY_APP}
+PACKAGES = {
+    APP: ("", "FBA Arcade"),
+    "io.github.ankushui18.fbaarcade.test": ("", "FBA Arcade"),
+    "io.github.ankushui18.fbaarcade.recovery": ("-recovery", "FBA Arcade Recovery"),
+    "io.github.ankushui18.fbaarcade.recovery.preview": ("-recovery-preview", "FBA Arcade Recovery Preview"),
+}
 CATALOG_ASSETS = {"assets/game-art.zip", "assets/game-catalog.tsv", "assets/game-cheats.zip", "assets/ips-targets.zip"}
 CATALOG_DIR = Path(__file__).resolve().parents[1] / "android/src/main"
 NATIVE = re.compile(r"lib/(arm64-v8a|x86_64)/lib(retro|offlinefb|hqx)\.so\Z")
@@ -105,12 +109,10 @@ def inspect_manifest(aapt2, apk, link):
     badging = subprocess.check_output([aapt2, "dump", "badging", apk], text=True)
     package = re.search(r"^package: name='([^']+)'", badging, re.M)
     require(package and package[1] in PACKAGES, "unexpected application ID")
-    recovery = package[1] == RECOVERY_APP
+    suffix, label = PACKAGES[package[1]]
     installed_variant = re.search(r"versionName='([^']+)'", badging)
-    require(installed_variant and installed_variant[1].endswith("-link") == link, "wrong APK flavor")
-    recovery_suffix = "-recovery-link" if link else "-recovery"
-    require(installed_variant[1].endswith(recovery_suffix) == recovery, "wrong recovery version")
-    label = "FBA Arcade Recovery" if recovery else "FBA Arcade"
+    expected_version = r"\d+\.\d+\.\d+" + re.escape(suffix + ("-link" if link else ""))
+    require(installed_variant and re.fullmatch(expected_version, installed_variant[1]), "wrong APK variant")
     require(f"application-label:'{label}'" in badging, "unexpected launcher label")
     require(re.search(r"^(?:sdkVersion|minSdkVersion):'26'$", badging, re.M) and
             "targetSdkVersion:'37'" in badging, "unexpected effective SDK levels")
