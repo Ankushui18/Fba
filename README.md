@@ -6,16 +6,16 @@ update of the original `com.joyemu.fbaapp`.
 
 ## Install and play
 
-[**Download FBA Arcade 0.5.2 APK**](https://github.com/Ankushui18/Fba/raw/refs/heads/arena/efa257c2-fba/artifacts/fba-arcade-0.5.2-preview-link-arm64-v8a-test.apk)
-— signed, 64-bit ARM, **Android 8 or later**. This is the single current build:
-offline solo play, [local Wi-Fi/Bluetooth multiplayer](docs/LINK_PLAY.md), and
-[Backup & restore](#back-up-saves-and-settings) in one APK. It keeps the 0.5.1
-image-filter timing fix. The standalone Offline download has been retired.
+[**Download FBA Arcade 0.5.3 APK**](https://github.com/Ankushui18/Fba/raw/refs/heads/arena/efa257c2-fba/artifacts/fba-arcade-0.5.3-preview-link-arm64-v8a-test.apk)
+— signed, 64-bit ARM, **Android 8 or later**. This update adds [Quick Resume](#quick-resume)
+and keeps offline solo play, [local Wi-Fi/Bluetooth multiplayer](docs/LINK_PLAY.md),
+[Backup & restore](#back-up-saves-and-settings), and the 0.5.1 image-filter timing
+fix in a single APK. There is no separate Offline build.
 
-Download the `.apk`, not the [SHA-256 checksum](artifacts/FBA-Arcade-0.5.2-SHA256SUMS.txt).
-**Install over 0.5.1 Recovery Preview or the 0.5.2 Offline build without
-uninstalling.** The app ID and signer match, so the library, saves and settings
-stay in place. If you already have 0.5.2 Link, keep it: this is the same APK.
+Download the `.apk`, not the [SHA-256 checksum](artifacts/FBA-Arcade-0.5.3-SHA256SUMS.txt).
+**Install over 0.5.2 (Link or the earlier Offline flavor) or 0.5.1 Recovery
+Preview without uninstalling.** The app ID and signer match, so the library,
+saves and settings stay in place.
 
 The separately signed original **FBA Arcade Recovery** and **FBA4droid** are not
 updated by this APK. Leave them installed if you need their data. The backup
@@ -52,6 +52,24 @@ for the restored features and remaining compatibility gaps.
 The library gear edits global defaults. In a game settings panel, choose
 **For this game** to customize it or **Use global** to clear overrides. The
 round stick maps digital directions, not analog trackball or lightgun input.
+
+### Quick Resume
+
+1. From the library gear, choose **Settings → Quick Resume → Turn on**. It is
+   off by default, including after an update from 0.5.2.
+2. Play a solo game. Choose **Pause → Exit game** and wait for **Quick Resume
+   saved**. Returning to Android Home, force-stopping, and exiting a Link match
+   do not save a checkpoint.
+3. Tap **Continue** at the top of the games list to load the last successful
+   solo checkpoint. Tapping a game row still starts it normally. Continue needs
+   the same ROM ZIP revision and IPS variant if you used patches.
+
+There is one automatic slot, separate from all six manual slots. Each successful
+solo exit replaces that auto-save. If capture fails, you can stay paused or exit
+without replacing the previous one. Turning Quick Resume off hides Continue but
+keeps the checkpoint; **Clear auto-save** deletes only that checkpoint. The
+checkpoint and its opt-in setting stay on this phone. Use **Pause → Save** if
+you want that progress included in a portable ZIP.
 
 ### Back up saves and settings
 
@@ -147,7 +165,7 @@ export ANDROID_SDK_ROOT=/path/to/android-sdk
 export ANDROID_NDK_HOME="$ANDROID_SDK_ROOT/ndk/28.2.13676358"
 ./tools/build-apk.sh
 ./tools/test.sh
-./tools/verify-apk.sh artifacts/fba-arcade-0.5.2-link-arm64-v8a-test.apk
+./tools/verify-apk.sh artifacts/fba-arcade-0.5.3-link-arm64-v8a-test.apk
 ```
 
 No Gradle/Maven dependencies or legacy APK files are needed. `tools/build-core.sh`

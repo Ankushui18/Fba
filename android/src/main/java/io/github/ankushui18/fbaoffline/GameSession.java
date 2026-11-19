@@ -21,6 +21,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicIntegerArray;
 import java.util.concurrent.locks.LockSupport;
+import java.util.function.Consumer;
 
 /** Runs the native core and audio. Hands raw snapshots to a separate presenter. */
 final class GameSession implements Runnable {
@@ -39,7 +40,9 @@ final class GameSession implements Runnable {
     private final Context app;
     final PatchStore.Entry patch;
     final GameLink link;
+    final boolean continuing;
     private final int launchSlot;
+    private final QuickResumeStore quickResume;
     private volatile int[] controls = new int[4];
     final StateStore states;
     private final ArrayBlockingQueue<Runnable> commands = new ArrayBlockingQueue<>(8);
@@ -57,12 +60,16 @@ final class GameSession implements Runnable {
     private volatile boolean stopping;
 
     GameSession(Context context, SurfaceHolder surface, File rom, File systemDir, File saveDir, File cover,
-                PatchStore.Entry patch, int launchSlot, GameLink link, Callbacks callbacks) {
+                PatchStore.Entry patch, int launchSlot, GameLink link, boolean continuing, Callbacks callbacks) {
+        if (continuing && (link != null || launchSlot != 0)) throw new IllegalArgumentException("Quick Resume is a separate solo launch.");
         app = context.getApplicationContext();
         this.patch = patch;
         this.link = link;
         this.launchSlot = launchSlot;
-        states = new StateStore(new File(app.getNoBackupFilesDir(), "states"), rom, patch == null ? null : patch.id);
+        this.continuing = continuing;
+        File privateData = app.getNoBackupFilesDir();
+        states = new StateStore(new File(privateData, "states"), rom, patch == null ? null : patch.id);
+        quickResume = new QuickResumeStore(privateData);
         this.cover = patch == null ? cover : patch.preview();
         renderer = new FrameRenderer(surface);
         this.rom = rom;
@@ -97,6 +104,25 @@ final class GameSession implements Runnable {
         inputReset.incrementAndGet();
     }
     boolean post(Runnable task) { return !stopping && commands.offer(task); }
+
+    // Only explicit solo Exit enqueues this, after the screen has paused input and audio.
+    // A failed capture leaves the game paused so the user can choose whether to exit.
+    boolean exitWithQuickResume(Consumer<String> finished) {
+        if (link != null) return false;
+        return post(() -> {
+            if (stopping) return;
+            String error = null;
+            try {
+                quickResume.save(states, Core.captureState());
+                stopping = true;
+            } catch (IOException failed) {
+                error = failed.getMessage() == null ? "Check available storage." : failed.getMessage();
+            } catch (RuntimeException | OutOfMemoryError failed) {
+                error = "The emulator couldn't capture this state.";
+            }
+            finished.accept(error);
+        });
+    }
 
     void saveSlot(int slot) throws IOException {
         states.save(slot, Core.captureState());
@@ -176,6 +202,9 @@ final class GameSession implements Runnable {
             File system = isolated == null ? systemDir : isolated;
             Files.createDirectories(saves.toPath());
             if (stopping) return;
+            // Check the snapshot before opening the driver; a mismatched ZIP must not boot or write solo battery data.
+            byte[] resumeState = continuing ? quickResume.load(states) : null;
+            if (stopping) return;
             if (link == null) try {
                 definition = GameCatalog.stageCheats(app, system, rom);
             } catch (IOException ignored) { /* A catalog/cache error must not block playing. */ }
@@ -188,7 +217,10 @@ final class GameSession implements Runnable {
             // The pinned core publishes the real digital mappings on its first input poll.
             // Do a neutral frame before restoring a selected slot or beginning a synchronized link.
             if (Core.step(0, samples) < 0) throw new IOException("Couldn't prepare this FBNeo driver.");
-            if (launchSlot > 0) loadSlot(launchSlot);
+            if (resumeState != null) {
+                if (!Core.restoreState(resumeState)) throw new IOException("FBNeo couldn't restore this Quick Resume save.");
+                resumeState = null;
+            } else if (launchSlot > 0) loadSlot(launchSlot);
             int[] masks = new int[4];
             for (int i = 0; i < masks.length; i++) masks[i] = Core.inputMask(i);
             controls = masks;

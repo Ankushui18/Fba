@@ -94,6 +94,11 @@ final class LibraryTools {
                 }).show();
     }
 
+    PatchStore.Entry resumePatch(File rom, String id) throws IOException {
+        for (PatchStore.Entry patch : patches.entries(rom)) if (patch.id.equals(id)) return patch;
+        throw new IOException("Quick Resume needs the original IPS variant. Re-import the same patches in the same order.");
+    }
+
     void ips(File rom) {
         host.job("Reading patch profiles…", () -> patches.entries(rom), list -> showPatches(rom, list));
     }

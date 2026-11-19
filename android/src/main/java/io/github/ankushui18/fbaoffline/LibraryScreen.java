@@ -45,6 +45,7 @@ final class LibraryScreen extends LinearLayout {
         void browseFolder();
         void settings();
         void play(File file);
+        void continueGame(QuickResumeStore.Entry entry);
         void options(View anchor, File file);
     }
 
@@ -60,8 +61,9 @@ final class LibraryScreen extends LinearLayout {
     private final ListView list;
     private final TextView section, count, notice, boardChip;
     private final EditText search;
-    private final Button add, folder, sortButton, viewButton;
+    private final Button add, folder, sortButton, viewButton, continueLast;
     private final Rows rows = new Rows();
+    private QuickResumeStore.Entry checkpoint;
     private List<File> files = Collections.emptyList(), recent = Collections.emptyList();
     private Set<String> favorites = Collections.emptySet();
     private int tab, sort;
@@ -137,6 +139,20 @@ final class LibraryScreen extends LinearLayout {
         notice.setVisibility(GONE);
         libraryTools = ui.column();
         header.addView(libraryTools);
+        continueLast = ui.button("Continue", BLUE, WHITE, 10);
+        ArcadeUi.singleLine(continueLast);
+        continueLast.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
+        continueLast.setMinimumHeight(ui.dp(46));
+        continueLast.setVisibility(GONE);
+        continueLast.setOnClickListener(v -> {
+            if (checkpoint != null && !importing) {
+                hideKeyboard();
+                actions.continueGame(checkpoint);
+            }
+        });
+        LayoutParams continueSpace = new LayoutParams(-1, -2);
+        continueSpace.bottomMargin = ui.dp(9);
+        libraryTools.addView(continueLast, continueSpace);
         LinearLayout heading = ui.row();
         section = ui.text("All games", 20, INK, true);
         if (Build.VERSION.SDK_INT >= 28) section.setAccessibilityHeading(true);
@@ -247,12 +263,14 @@ final class LibraryScreen extends LinearLayout {
         body.setPadding(left, 0, right, 0);
     }
 
-    void show(List<File> files, List<File> recent, Set<String> favorites, boolean importing, String note) {
+    void show(List<File> files, List<File> recent, Set<String> favorites, QuickResumeStore.Entry checkpoint, boolean importing, String note) {
         this.files = files; this.recent = recent; this.favorites = favorites; this.importing = importing;
+        this.checkpoint = checkpoint;
         notice.setText(note);
         notice.setVisibility(note == null ? GONE : VISIBLE);
         add.setEnabled(!importing); folder.setEnabled(!importing);
         sortButton.setEnabled(!importing); viewButton.setEnabled(!importing);
+        continueLast.setEnabled(!importing);
         refresh();
     }
 
@@ -329,6 +347,11 @@ final class LibraryScreen extends LinearLayout {
         boolean onFiles = tab == 3;
         filesPanel.setVisibility(onFiles ? VISIBLE : GONE);
         libraryTools.setVisibility(onFiles ? GONE : VISIBLE);
+        continueLast.setVisibility(checkpoint == null ? GONE : VISIBLE);
+        if (checkpoint != null) {
+            String title = catalog.game(new File(checkpoint.rom)).title(chinese);
+            continueLast.setText("Continue · " + title + (checkpoint.variant == null ? "" : " · IPS"));
+        }
         section.setText(tab == 0 ? "All games" : tab == 1 ? "Favorite games" : "Recently played");
         int filters = (board.isEmpty() ? 0 : 1) + (genre.isEmpty() ? 0 : 1);
         boardChip.setText(filters == 0 ? "Filter ▾" : "Filter · " + filters + " ▾");

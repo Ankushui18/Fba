@@ -61,20 +61,29 @@ final class StateStore {
         else LocalFiles.atomicWrite(label, clean.getBytes(StandardCharsets.UTF_8));
     }
 
-    void save(int number, byte[] state) throws IOException {
+    void save(int number, byte[] state) throws IOException { writeSnapshot(slot(number), state, null); }
+
+    String romName() { return rom.getName(); }
+    String variant() { return variant; }
+
+    interface Preface { void write(DataOutputStream out) throws IOException; }
+
+    /** Manual slots and Quick Resume share the same checked state payload and atomic replacement. */
+    void writeSnapshot(File file, byte[] state, Preface preface) throws IOException {
         if (state == null || state.length == 0 || state.length > MAX_BYTES) throw new IOException("This driver doesn't support saving a state.");
-        File file = slot(number);
         Path parent = file.getParentFile().toPath();
         Files.createDirectories(parent);
         Path tmp = Files.createTempFile(parent, "slot-", ".part");
         try {
             try (DataOutputStream out = new DataOutputStream(new BufferedOutputStream(Files.newOutputStream(tmp)))) {
+                if (preface != null) preface.write(out);
                 out.writeUTF(FORMAT);
                 out.write(romFingerprint());
                 out.writeInt(state.length);
                 out.writeInt(crc(state));
                 out.write(state);
             }
+            LocalFiles.interrupted();
             Files.move(tmp, file.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
         } finally { Files.deleteIfExists(tmp); }
     }
@@ -82,15 +91,17 @@ final class StateStore {
     byte[] load(int number) throws IOException {
         File file = slot(number);
         if (!file.isFile()) throw new IOException("This slot is empty.");
-        try (DataInputStream in = openSlot(file.toPath())) {
-            Header header = new Header(in);
-            if (!Arrays.equals(header.fingerprint, romFingerprint())) throw new IOException("This state belongs to a different ROM revision.");
-            if (header.length > file.length()) throw new IOException("Invalid state length.");
-            byte[] data = new byte[header.length];
-            in.readFully(data);
-            header.checkEnd(in, crc(data));
-            return data;
-        }
+        try (DataInputStream in = openSlot(file.toPath())) { return readSnapshot(in, file.length()); }
+    }
+
+    byte[] readSnapshot(DataInputStream in, long fileBytes) throws IOException {
+        Header header = new Header(in);
+        if (!Arrays.equals(header.fingerprint, romFingerprint())) throw new IOException("This state belongs to a different ROM revision.");
+        if (header.length > fileBytes) throw new IOException("Invalid state length.");
+        byte[] data = new byte[header.length];
+        in.readFully(data);
+        header.checkEnd(in, crc(data));
+        return data;
     }
 
     // A portable backup can be restored before any ROMs are installed. Check the slot

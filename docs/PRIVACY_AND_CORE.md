@@ -124,6 +124,13 @@ entry paths, completeness, checksums, slot headers and typed settings, and
 only then adds missing slots. The ROM fingerprint is checked at load time.
 Checksums detect damage, not who made the ZIP. Restore your own backups only.
 
+**Quick Resume in 0.5.3:** Opt-in solo exit captures one snapshot on the core
+worker, separately from the manual slots. The exact ROM/IPS target and state
+are replaced together in private no-backup storage, only after a successful
+write. Continue validates the core pin, ROM/IPS fingerprint and state checksum
+before loading. Link matches, backgrounding and force-stop do not update the
+auto-save. The checkpoint and its opt-in setting aren't in the portable ZIP.
+
 ## Verification and installation
 
 - The ARM64 APK passes v2/v3 signature, launcher-only manifest, payload/CRC,
@@ -141,7 +148,7 @@ Checksums detect damage, not who made the ZIP. Restore your own backups only.
   current NDK before public distribution.
 - `tools/test.sh` checks imports, custom/auto/compact layouts, multitouch,
   state validation, backup round trips and no-overwrite/error handling,
-  IPS, INI validation, HQx pixel parity and frame handoff,
+  Quick Resume identity and isolation, IPS, INI validation, HQx pixel parity and frame handoff,
   the local link protocol and payload indexes. `tools/smoke-core.sh` runs a
   synthetic board program on the unchanged pinned Linux core: video, PCM, both player inputs, DIP,
   imported cheat writes, state restore/reset, and actual changed video from an
@@ -179,9 +186,8 @@ flavors share their own ID and signer, so they replace each other. The signed
 versionCode (5 and 6), so 0.5.1 can update 0.5.0 or 0.4.0 Recovery without
 uninstalling.
 
-The current 0.5.2 APK is the previously signed Link binary, with launcher
-label **FBA Arcade**, version code 7, and the same app ID
-(`io.github.ankushui18.fbaarcade.recovery.preview`) and signer (SHA-256
-`d8a45e30010cfbee84fef2227b3e0c98e585046658c0a0582df0845d8fd0d396`)
-as 0.5.1 Recovery Preview. It replaces the earlier 0.5.2 Offline APK too, but
-cannot update original Recovery. The Link FBNeo core bytes are unchanged.
+The current 0.5.3 APK uses launcher label **FBA Arcade**, version code 8,
+and the same app ID (`io.github.ankushui18.fbaarcade.recovery.preview`) and
+signer (SHA-256 `d8a45e30010cfbee84fef2227b3e0c98e585046658c0a0582df0845d8fd0d396`)
+as 0.5.2 and 0.5.1 Recovery Preview. It cannot update original Recovery. The
+Link FBNeo core bytes and compatibility ID are unchanged.

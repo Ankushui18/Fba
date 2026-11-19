@@ -110,9 +110,11 @@ def inspect_manifest(aapt2, apk, link):
     package = re.search(r"^package: name='([^']+)' versionCode='([0-9]+)' versionName='([^']+)'", badging, re.M)
     require(package and package[1] in PACKAGES, "unexpected application ID or version metadata")
     version_code = int(package[2])
+    require(version_code < 8 or link, "current APKs must include local multiplayer")
     # Older pinned downloads still have their original labels. The app IDs are unchanged.
     suffix, label = PACKAGES[package[1]] if version_code < 7 else ("", "FBA Arcade")
-    version = r"0\.5\.2" if version_code == 7 else r"\d+\.\d+\.\d+"
+    released_versions = {7: "0.5.2", 8: "0.5.3"}
+    version = re.escape(released_versions[version_code]) if version_code in released_versions else r"\d+\.\d+\.\d+"
     expected_version = version + re.escape(suffix + ("-link" if link else ""))
     require(re.fullmatch(expected_version, package[3]), "wrong APK version or variant")
     require(f"application-label:'{label}'" in badging, "unexpected launcher label")

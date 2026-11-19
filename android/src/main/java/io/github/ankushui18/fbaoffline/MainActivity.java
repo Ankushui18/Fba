@@ -67,7 +67,7 @@ public final class MainActivity extends Activity implements GameSession.Callback
     private static final int PICK_ZIPS = 101, PICK_FOLDER = 102, PICK_ART = 103, EXPORT_SHOT = 104, PICK_SKIN = 105;
     private static final int EXPORT_BACKUP = 106, RESTORE_BACKUP = 107;
     private static final int MAX_BATCH = 64, HISTORY_LIMIT = 24;
-    private static final String RECENT_FILES = "recent_roms", FAVORITES = "favorites";
+    private static final String RECENT_FILES = "recent_roms", FAVORITES = "favorites", QUICK_RESUME = "quick_resume_enabled";
     private static final String[] PAD_MODES = {"Custom", "Auto (game buttons)", "Compact (fixed)"};
     private static final String[] FILTERS = {"Sharp pixels", "Smooth (bilinear)", "HQ2x", "HQ3x", "HQ4x"};
     private static final String[] SKIPS = {"Off", "Skip 1", "Skip 2", "Skip 3", "Skip 4", "Auto"};
@@ -86,9 +86,10 @@ public final class MainActivity extends Activity implements GameSession.Callback
     private LibraryTools libraryTools;
     private RomFolders romFolders;
     private BackupDocuments backups;
+    private QuickResumeStore quickResume;
     private SkinStore skins;
     private LinkMenu linkMenu;
-    private boolean foreground, importing, muted, touchVisible, loaded;
+    private boolean foreground, importing, muted, touchVisible, loaded, exiting;
     private PadArt skin;
     private String skinSelection;
     private SharedPreferences settings;
@@ -112,6 +113,7 @@ public final class MainActivity extends Activity implements GameSession.Callback
         if (inputManager != null) inputManager.registerInputDeviceListener(devices, null);
         settings = getSharedPreferences("arcade_ui", MODE_PRIVATE);
         backups = new BackupDocuments(this, settings);
+        quickResume = new QuickResumeStore(privateData);
         skins = new SkinStore(new File(privateData, "controller-skins"));
         refreshSkin();
         if (saved != null) { artSet = saved.getString("artSet"); exportPath = saved.getString("exportPath"); }
@@ -147,6 +149,7 @@ public final class MainActivity extends Activity implements GameSession.Callback
             @Override public void browseFolder() { browseRoms(); }
             @Override public void settings() { showSettings(); }
             @Override public void play(File file) { MainActivity.this.play(file); }
+            @Override public void continueGame(QuickResumeStore.Entry entry) { continueQuick(entry); }
             @Override public void options(View anchor, File file) { romOptions(anchor, file); }
         });
         screen.setOnApplyWindowInsetsListener((view, insets) -> {
@@ -250,7 +253,8 @@ public final class MainActivity extends Activity implements GameSession.Callback
             File file = byName.get(name);
             if (file != null) recent.add(file);
         }
-        library.show(all, recent, favorites(), importing, note);
+        QuickResumeStore.Entry checkpoint = quickResumeEnabled() ? quickResume.latest() : null;
+        library.show(all, recent, favorites(), checkpoint, importing, note);
         if (library.getParent() == null) {
             setContentView(library);
             applySystemBars();
@@ -553,7 +557,21 @@ public final class MainActivity extends Activity implements GameSession.Callback
 
     private void play(File file, PatchStore.Entry patch, int slot) { play(file, patch, slot, null); }
 
-    private void play(File file, PatchStore.Entry patch, int slot, GameLink link) {
+    private void play(File file, PatchStore.Entry patch, int slot, GameLink link) { launch(file, patch, slot, link, false); }
+
+    private void continueQuick(QuickResumeStore.Entry saved) {
+        if (!quickResumeEnabled() || game != null || importing || editor != null) return;
+        File file = new File(roms, saved.rom);
+        if (!RomStore.isArchive(file)) {
+            showLibrary("Re-import " + saved.rom + " with the same ROM revision to continue.");
+            return;
+        }
+        if (saved.variant == null) launch(file, null, 0, null, true);
+        else libraryJob("Finding the saved IPS variant…", () -> libraryTools.resumePatch(file, saved.variant),
+                patch -> launch(file, patch, 0, null, true));
+    }
+
+    private void launch(File file, PatchStore.Entry patch, int slot, GameLink link, boolean continuing) {
         if (game != null || importing || editor != null || !RomStore.isArchive(file)) return;
         if ((!systemDir.isDirectory() && !systemDir.mkdirs()) || (!saveDir.isDirectory() && !saveDir.mkdirs())) {
             showLibrary("Couldn't create private storage for the emulator.");
@@ -567,7 +585,7 @@ public final class MainActivity extends Activity implements GameSession.Callback
         if (link != null) title += " · Link P" + (link.player() + 1);
         GameScreen screen = new GameScreen(this, title, skin, touchVisible, link, this::gameAction);
         immersiveInsets(screen);
-        GameSession session = new GameSession(this, screen.surface(), file, systemDir, saveDir, catalog.cover(set), patch, slot, link, this);
+        GameSession session = new GameSession(this, screen.surface(), file, systemDir, saveDir, catalog.cover(set), patch, slot, link, continuing, this);
         game = session;
         player = screen;
         screen.attach(session);
@@ -598,9 +616,9 @@ public final class MainActivity extends Activity implements GameSession.Callback
 
     private void gameAction(GameScreen.Action action) {
         GameSession session = game;
-        if (session == null) return;
+        if (session == null || exiting) return;
         if (action == GameScreen.Action.RESUME) { togglePause(); return; }
-        if (action == GameScreen.Action.EXIT) { closeGame(); return; }
+        if (action == GameScreen.Action.EXIT) { exitGame(session); return; }
         if (!loaded) { toast("Wait for FBNeo to finish loading."); return; }
         switch (action) {
             case SAVE:
@@ -645,7 +663,7 @@ public final class MainActivity extends Activity implements GameSession.Callback
         if (!session.post(() -> {
             String[][] options = Core.options();
             runOnUiThread(() -> {
-                if (isFinishing() || isDestroyed() || game != session || !session.paused) return;
+                if (isFinishing() || isDestroyed() || game != session || exiting || !session.paused) return;
                 GamePanels.options(this, cheats ? "Game cheats" : "DIP switches", options, cheats, changes -> {
                     submit(session, () -> {
                         for (Map.Entry<String, Integer> entry : changes.entrySet()) {
@@ -660,13 +678,14 @@ public final class MainActivity extends Activity implements GameSession.Callback
     interface CoreTask { void run() throws IOException; }
 
     private void submit(GameSession session, CoreTask task, Runnable success) {
+        if (game != session || exiting) return;
         if (!session.post(() -> {
             String message = null;
             try { task.run(); }
             catch (IOException | RuntimeException failure) { message = failure.getMessage() == null ? "Couldn't complete this action." : failure.getMessage(); }
             final String error = message;
             runOnUiThread(() -> {
-                if (isFinishing() || isDestroyed() || game != session) return;
+                if (isFinishing() || isDestroyed() || game != session || exiting) return;
                 if (error != null) new AlertDialog.Builder(this).setTitle("Game action failed")
                         .setMessage(error).setPositiveButton("Close", null).show();
                 else success.run();
@@ -674,7 +693,7 @@ public final class MainActivity extends Activity implements GameSession.Callback
         })) toast("Emulator busy. Try again.");
     }
 
-    private void togglePause() { if (game != null && editor == null) setPaused(!game.paused); }
+    private void togglePause() { if (game != null && editor == null && !exiting) setPaused(!game.paused); }
 
     private void setPaused(boolean pause) {
         if (game == null) return;
@@ -685,7 +704,32 @@ public final class MainActivity extends Activity implements GameSession.Callback
         syncAudioFocus();
     }
 
-    private void closeGame() {
+    private void exitGame(GameSession session) {
+        if (session.link != null || !loaded || !quickResumeEnabled()) { closeGame(); return; }
+        exiting = true;
+        setPaused(true);
+        player.setSavingQuickResume(true);
+        if (!session.exitWithQuickResume(error -> runOnUiThread(() -> finishQuickExit(session, error)))) {
+            finishQuickExit(session, "The emulator is busy. You can try again.");
+        }
+    }
+
+    private void finishQuickExit(GameSession session, String error) {
+        if (game != session || isDestroyed() || isFinishing()) return;
+        if (error == null) { closeGame("Quick Resume saved. Use Continue to pick up here."); return; }
+        exiting = false;
+        player.setSavingQuickResume(false);
+        new AlertDialog.Builder(this).setTitle("Couldn't save Quick Resume")
+                .setMessage(error + "\n\nAny previous auto-save and manual slots are kept.")
+                .setNegativeButton("Stay paused", null)
+                .setPositiveButton("Exit without saving", (d, w) -> {
+                    if (game == session) closeGame("Quick Resume wasn't updated.");
+                }).show();
+    }
+
+    private void closeGame() { closeGame(null); }
+
+    private void closeGame(String note) {
         if (game == null) return;
         if (editor != null) closeEditor();
         clearInputs();
@@ -694,12 +738,12 @@ public final class MainActivity extends Activity implements GameSession.Callback
         player = null;
         currentFile = null;
         ports.clear();
-        loaded = false;
+        loaded = exiting = false;
         refreshSkin();
         abandonFocus();
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
-        showLibrary(null);
+        showLibrary(note);
     }
 
     @Override public void ready(GameSession session) {
@@ -719,9 +763,13 @@ public final class MainActivity extends Activity implements GameSession.Callback
     @Override public void failed(GameSession session, String reason) {
         runOnUiThread(() -> {
             if (game != session || isFinishing() || isDestroyed()) return;
-            closeGame();
-            new AlertDialog.Builder(this).setTitle(session.link == null ? "Couldn't play this ZIP" : "Local link ended").setMessage(reason)
-                    .setPositiveButton("OK", null).show();
+            boolean resuming = session.continuing && !loaded;
+            File rom = currentFile;
+            closeGame(exiting ? "Quick Resume wasn't updated." : null);
+            String title = resuming ? "Couldn't continue" : session.link == null ? "Couldn't play this ZIP" : "Local link ended";
+            AlertDialog.Builder dialog = new AlertDialog.Builder(this).setTitle(title).setMessage(reason).setPositiveButton("OK", null);
+            if (resuming) dialog.setNeutralButton("Start normally", (d, w) -> play(rom, session.patch, 0));
+            dialog.show();
         });
     }
 
@@ -805,20 +853,49 @@ public final class MainActivity extends Activity implements GameSession.Callback
     private void showSettings() {
         if (editor != null || importing || game != null) return;
         library.hideKeyboard();
-        String[] items = {"Virtual controls", "Display & audio", "Physical keys", "Backup & restore", "Browse ROM folder", "Quick guide", "Core license", "Reset game settings"};
+        String[] items = {"Virtual controls", "Display & audio", "Physical keys", "Quick Resume · " + status(quickResumeEnabled()),
+                "Backup & restore", "Browse ROM folder", "Quick guide", "Core license", "Reset game settings"};
         new AlertDialog.Builder(this).setTitle("Settings · Global defaults").setItems(items, (d, which) -> {
             switch (which) {
                 case 0: showControls(); break;
                 case 1: showDisplay(); break;
                 case 2: showKeyBindings(); break;
-                case 3: showBackup(); break;
-                case 4: browseRoms(); break;
-                case 5: showGuide(); break;
-                case 6: showLicense(); break;
-                case 7: resetSettings(); break;
+                case 3: showQuickResume(); break;
+                case 4: showBackup(); break;
+                case 5: browseRoms(); break;
+                case 6: showGuide(); break;
+                case 7: showLicense(); break;
+                case 8: resetSettings(); break;
                 default: break;
             }
         }).setNegativeButton("Close", null).show();
+    }
+
+    private boolean quickResumeEnabled() { return settings.getBoolean(QUICK_RESUME, false); }
+
+    private void showQuickResume() {
+        boolean enabled = quickResumeEnabled();
+        AlertDialog.Builder dialog = new AlertDialog.Builder(this).setTitle("Quick Resume · " + status(enabled))
+                .setMessage("Save one recent solo game when you choose Pause → Exit game. Tap Continue in the library to pick up there. Each successful auto-save replaces the previous one, not your manual slots.\n\n"
+                        + "Closing or backgrounding the app and exiting a Link match don't trigger an auto-save. This save stays on this device; use a manual slot for ZIP backups.")
+                .setNegativeButton("Close", null)
+                .setPositiveButton(enabled ? "Turn off" : "Turn on", (d, w) -> {
+                    settings.edit().putBoolean(QUICK_RESUME, !enabled).apply();
+                    showLibrary(enabled ? "Quick Resume off. Any old auto-save is kept." : "Quick Resume on. Use Exit game to save your place.");
+                });
+        if (quickResume.exists()) dialog.setNeutralButton("Clear auto-save", (d, w) -> clearQuickResume());
+        dialog.show();
+    }
+
+    private void clearQuickResume() {
+        new AlertDialog.Builder(this).setTitle("Clear the Quick Resume save?")
+                .setMessage("This removes only the auto-save. Your six manual slots and settings are kept.")
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Clear", (d, w) -> libraryJob("Clearing auto-save…", () -> {
+                    GameSession.awaitIdle();
+                    quickResume.clear();
+                    return null;
+                }, unused -> showLibrary("Quick Resume save cleared."))).show();
     }
 
     private void showBackup() {

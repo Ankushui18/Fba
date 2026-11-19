@@ -40,6 +40,20 @@ final class GameScreen extends FrameLayout {
     SurfaceHolder surface() { return stage.pixels.getHolder(); }
     void attach(GameSession session) { this.session = session; stage.deck.attach(session); }
     void ready() { stage.loading.setVisibility(GONE); stage.layout = null; stage.requestLayout(); }
+    void setSavingQuickResume(boolean saving) {
+        stage.pause.setEnabled(!saving);
+        stage.player.setEnabled(!saving);
+        if (saving) {
+            menu.setVisibility(GONE);
+            stage.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_AUTO);
+            stage.loading.setText("Saving Quick Resume…");
+            stage.loading.setBackgroundColor(0xda07111e);
+            stage.loading.setVisibility(VISIBLE);
+        } else {
+            stage.loading.setVisibility(GONE);
+            setPaused(true);
+        }
+    }
     void peerWait(boolean waiting) {
         stage.loading.setText("Other player paused");
         stage.loading.setVisibility(waiting ? VISIBLE : GONE);

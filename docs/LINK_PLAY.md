@@ -1,10 +1,10 @@
 # FBA Arcade Link beta
 
-Install the [FBA Arcade 0.5.2 APK](../README.md#install-and-play) on both phones.
-It already includes both solo play and Link multiplayer. It replaces the
-standalone 0.5.2 Offline build or updates 0.5.1 Recovery Preview without
-uninstalling; it does not update original Recovery. The wire and compatibility
-ID are unchanged from 0.5.0; 0.4.0 peers are still rejected.
+Install the [FBA Arcade 0.5.3 APK](../README.md#install-and-play) on both phones.
+It includes solo play and Link multiplayer, and updates 0.5.2 or 0.5.1 Recovery
+Preview without uninstalling. It does not update the separately signed original
+Recovery. The wire and compatibility ID are unchanged from 0.5.0; 0.4.0 peers
+are still rejected.
 
 ## Start a two-player game
 
@@ -39,8 +39,8 @@ advertisement permission is requested.
   Link build applies `android/patches/fbneo-lockstep.patch` to request the
   core's existing deterministic random/time mode before driver init. Local
   Link files are temporary; they do not read or change solo states, scores or
-  emulated battery storage. Save/load, patches, cheats and DIP changes are solo
-  features and cannot be used in a linked match.
+  emulated battery storage. Exiting a Link match never changes Quick Resume.
+  Saves, patches, cheats and DIP changes remain solo features.
 - Link exchanges compatibility fingerprints and authenticated fixed-size
   digital inputs, pause flags and periodic AV checksums. It **does not** send
   ROM contents, saves, device files, or telemetry; no relay or DNS lookup is

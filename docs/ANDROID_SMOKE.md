@@ -1,16 +1,16 @@
-# FBA Arcade 0.5.2 — Android acceptance checks
+# FBA Arcade 0.5.3 — Android acceptance checks
 
 The signed ARM64 APK passed build and host verification. No Android device
 was connected. These checks verify Android UI/SAF, input, audio, and hardware
 connectivity on a phone or tablet. Use a legally obtained ROM set for the
 pinned FBNeo revision, including its BIOS/parent dependencies.
 
-1. **Update in place.** Install the [0.5.2 APK](../README.md#install-and-play)
-   over 0.5.1 Recovery Preview or the earlier 0.5.2 Offline build. Do not uninstall
-   first. Check that the launcher says **FBA Arcade** and that ROMs, saved folder
-   access, settings and an existing save still work. Any original Recovery or
-   FBA4droid install should be untouched. Start a solo game without a network
-   connection or a Bluetooth/Local Network runtime grant.
+1. **Update in place.** Install the [0.5.3 APK](../README.md#install-and-play)
+   over 0.5.2 or 0.5.1 Recovery Preview. Do not uninstall first. Check that the
+   launcher says **FBA Arcade** and that ROMs, saved folder access, settings and
+   an existing manual save still work. Any original Recovery or FBA4droid install
+   should be untouched. Start a solo game without a network connection or a
+   Bluetooth/Local Network runtime grant.
 2. **Import and browse.** Use **Import ZIPs** and **Files → Browse folder**.
    Select a directory with ZIPs and a nested folder. Navigate down/up; choose
    one ZIP or import the listed ZIPs. Reopen the app and browse without picking
@@ -62,7 +62,20 @@ pinned FBNeo revision, including its BIOS/parent dependencies.
    preview/slots. The base ZIP, regular battery storage and states should be
    unchanged. Missing IPS files, out-of-bounds writes and wrong chip CRCs should
    fail without changing existing variants.
-8. **Backup & restore.** Name a base-game slot and an IPS slot, set a non-default
+8. **Quick Resume.** With the option off (default), exit a solo game and verify
+   there is no Continue button. Turn it on under **Settings → Quick Resume**.
+   Make a manual save, advance, and use **Pause → Exit game**. Wait for the
+   saved confirmation, close and reopen FBA Arcade, and tap **Continue**. Check
+   that it resumes from exit, not the earlier manual slot. Tap a normal game row
+   to verify it still starts normally. Press Home or force-stop from an active
+   game without choosing Exit; the previous auto-save should remain. Repeat with
+   an IPS variant; remove/re-import the same variant and try a different ROM
+   revision under the same name. An incompatible save must not start the wrong
+   game. Turn off Quick Resume to hide Continue, then turn it back on to see the
+   same checkpoint, and use **Clear auto-save**. The original manual slots must
+   still work. If a driver cannot save, check that you can stay paused or exit
+   without losing the previous checkpoint.
+9. **Backup & restore.** Name a base-game slot and an IPS slot, set a non-default
    HQx filter, sort/grid mode and custom pad layout, then exit to the library.
    Use **Settings → Backup & restore → Export ZIP** to save in Downloads. On a
    second device, restore that ZIP before importing the same ROMs and IPS
@@ -70,15 +83,17 @@ pinned FBNeo revision, including its BIOS/parent dependencies.
    Repeat restore with one occupied slot and one missing slot; the occupied
    slot (including its name/preview) must survive and the missing one must be
    added. The destination's ROM copies and folder grant must remain intact.
-   Cancel a picker/confirmation and try a plain ROM ZIP and a truncated copy of
-   the backup; none should change the current slots or settings.
-9. **Local multiplayer, two phones.** Install the same 0.5.2 APK on both.
-   See [Link setup](LINK_PLAY.md). Test Wi-Fi P1/P2 and paired Bluetooth P1/P2. Check
-   separate inputs, paired pause/resume and safe exit. Try different filters
-   on the two phones. Check a mixed 0.5.1/0.5.2 pair (same protocol), a rejected
-   0.4.0 peer, wrong room code, different ZIP revision, permission denial,
-   cancellation and network loss or app background. Check solo data is unchanged.
-10. **If possible:** repeat on a 16 KiB page-size phone.
+   The Quick Resume checkpoint and its toggle must remain local. Cancel a
+   picker/confirmation and try a plain ROM ZIP and a truncated copy of the backup;
+   none should change the current slots or settings.
+10. **Local multiplayer, two phones.** Install the same 0.5.3 APK on both.
+    See [Link setup](LINK_PLAY.md). Test Wi-Fi P1/P2 and paired Bluetooth P1/P2.
+    Check separate inputs, paired pause/resume and safe exit. Try different
+    filters on the two phones. Check a mixed 0.5.2/0.5.3 pair (same protocol), a
+    rejected 0.4.0 peer, wrong room code, different ZIP revision, permission
+    denial, cancellation and network loss or app background. Check that the solo
+    Quick Resume checkpoint and other solo data stay unchanged after a Link match.
+11. **If possible:** repeat on a 16 KiB page-size phone.
 
 Report phone model/Android version, APK flavor, ROM set name (not ROM contents),
 active filter, both FPS values, and whether audio stutters along with video.
