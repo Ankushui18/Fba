@@ -15,6 +15,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -74,6 +75,16 @@ final class GameSession implements Runnable {
     File cover() { return cover; }
     int inputMask(int port) { return controls[port]; }
     void start() { WORKER.execute(this); }
+
+    /** Library I/O only: wait off the UI thread for any closing game to finish writing its saves. */
+    static void awaitIdle() throws IOException {
+        try { WORKER.submit(() -> {}).get(); }
+        catch (InterruptedException cancelled) {
+            Thread.currentThread().interrupt();
+            LocalFiles.interrupted();
+        } catch (ExecutionException unavailable) { throw new IOException("Couldn't finish closing the game.", unavailable); }
+    }
+
     void stop() {
         stopping = true;
         renderer.close();

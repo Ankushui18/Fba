@@ -1,17 +1,16 @@
-# FBA Arcade 0.5.1 Recovery — Android acceptance checks
+# FBA Arcade 0.5.2 — Android acceptance checks
 
 Both signed ARM64 APKs passed build and host verification. No Android device
 was connected. These checks verify Android UI/SAF, input, audio, and hardware
 connectivity on a phone or tablet. Use a legally obtained ROM set for the
 pinned FBNeo revision, including its BIOS/parent dependencies.
 
-1. **Install.** Use [Recovery Preview Offline](../README.md#install-and-play)
-   first. Verify it appears as a separate app alongside any older Recovery
-   installation and leaves that app's data alone. Do not uninstall the old app.
-   If separately testing an in-place upgrade with the original Recovery signer,
-   compare the app ID and cert and check its library, layouts and saves survive.
-   Offline should request no permissions; the Android file picker is not a
-   permission prompt for all storage.
+1. **Update in place.** Install the [0.5.2 Offline APK](../README.md#install-and-play)
+   over 0.5.1 Recovery Preview. Do not uninstall first. Check that the launcher
+   says **FBA Arcade** and that ROMs, saved folder access, settings and an
+   existing save still work. Any original Recovery or FBA4droid install should
+   be untouched. Offline should request no permissions; the Android document
+   picker only grants access to what you select.
 2. **Import and browse.** Use **Import ZIPs** and **Files → Browse folder**.
    Select a directory with ZIPs and a nested folder. Navigate down/up; choose
    one ZIP or import the listed ZIPs. Reopen the app and browse without picking
@@ -63,13 +62,23 @@ pinned FBNeo revision, including its BIOS/parent dependencies.
    preview/slots. The base ZIP, regular battery storage and states should be
    unchanged. Missing IPS files, out-of-bounds writes and wrong chip CRCs should
    fail without changing existing variants.
-8. **Link beta only, two phones.** Update both to the 0.5.1 Link APK. See
+8. **Backup & restore.** Name a base-game slot and an IPS slot, set a non-default
+   HQx filter, sort/grid mode and custom pad layout, then exit to the library.
+   Use **Settings → Backup & restore → Export ZIP** to save in Downloads. On a
+   second device, restore that ZIP before importing the same ROMs and IPS
+   variant. Check the slot names, progress and settings after reopening the app.
+   Repeat restore with one occupied slot and one missing slot; the occupied
+   slot (including its name/preview) must survive and the missing one must be
+   added. The destination's ROM copies and folder grant must remain intact.
+   Cancel a picker/confirmation and try a plain ROM ZIP and a truncated copy of
+   the backup; none should change the current slots or settings.
+9. **Link beta only, two phones.** Update both to the 0.5.2 Link APK. See
    [setup](LINK_PLAY.md). Test Wi-Fi P1/P2 and paired Bluetooth P1/P2. Check
    separate inputs, paired pause/resume and safe exit. Try different filters
-   on the two phones. Check a mixed 0.5.0/0.5.1 pair (same protocol), a rejected
+   on the two phones. Check a mixed 0.5.1/0.5.2 pair (same protocol), a rejected
    0.4.0 peer, wrong room code, different ZIP revision, permission denial,
    cancellation and network loss or app background. Check solo data is unchanged.
-9. **If possible:** repeat on a 16 KiB page-size phone.
+10. **If possible:** repeat on a 16 KiB page-size phone.
 
 Report phone model/Android version, APK flavor, ROM set name (not ROM contents),
 active filter, both FPS values, and whether audio stutters along with video.

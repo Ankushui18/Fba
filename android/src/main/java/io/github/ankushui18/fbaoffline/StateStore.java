@@ -19,6 +19,7 @@ import java.util.zip.CRC32;
 final class StateStore {
     private static final String FORMAT = "FBA1:2da48555c13ce5d011edf2d6ec829b7393c070af";
     static final int SLOTS = 6, MAX_BYTES = 48 * 1024 * 1024;
+    static final long MAX_FILE_BYTES = MAX_BYTES + 128L;
     private final File rom, slots;
     private final String variant;
     private byte[] fingerprint;
@@ -81,18 +82,54 @@ final class StateStore {
     byte[] load(int number) throws IOException {
         File file = slot(number);
         if (!file.isFile()) throw new IOException("This slot is empty.");
-        if (file.length() > MAX_BYTES + 128L) throw new IOException("This state file is too large.");
-        try (DataInputStream in = new DataInputStream(new BufferedInputStream(new FileInputStream(file)))) {
-            if (!FORMAT.equals(in.readUTF())) throw new IOException("This state needs a different FBNeo build.");
-            byte[] target = new byte[32];
-            in.readFully(target);
-            if (!Arrays.equals(target, romFingerprint())) throw new IOException("This state belongs to a different ROM revision.");
-            int len = in.readInt(), crc = in.readInt();
-            if (len <= 0 || len > MAX_BYTES || len > file.length()) throw new IOException("Invalid state length.");
-            byte[] data = new byte[len];
+        try (DataInputStream in = openSlot(file.toPath())) {
+            Header header = new Header(in);
+            if (!Arrays.equals(header.fingerprint, romFingerprint())) throw new IOException("This state belongs to a different ROM revision.");
+            if (header.length > file.length()) throw new IOException("Invalid state length.");
+            byte[] data = new byte[header.length];
             in.readFully(data);
-            if (in.read() != -1 || crc(data) != crc) throw new IOException("This state file is damaged.");
+            header.checkEnd(in, crc(data));
             return data;
+        }
+    }
+
+    // A portable backup can be restored before any ROMs are installed. Check the slot
+    // format and payload now; the usual ROM/IPS fingerprint check still runs on load.
+    static void validateBackupSlot(Path file) throws IOException {
+        try (DataInputStream in = openSlot(file)) {
+            Header header = new Header(in);
+            CRC32 checksum = new CRC32();
+            byte[] buffer = new byte[Math.min(header.length, 64 * 1024)];
+            for (int left = header.length; left > 0;) {
+                LocalFiles.interrupted();
+                int size = Math.min(left, buffer.length);
+                in.readFully(buffer, 0, size);
+                checksum.update(buffer, 0, size);
+                left -= size;
+            }
+            header.checkEnd(in, (int) checksum.getValue());
+        }
+    }
+
+    private static DataInputStream openSlot(Path file) throws IOException {
+        if (Files.size(file) > MAX_FILE_BYTES) throw new IOException("This state file is too large.");
+        return new DataInputStream(new BufferedInputStream(Files.newInputStream(file)));
+    }
+
+    private static final class Header {
+        final byte[] fingerprint = new byte[32];
+        final int length, checksum;
+
+        Header(DataInputStream in) throws IOException {
+            if (!FORMAT.equals(in.readUTF())) throw new IOException("This state needs a different FBNeo build.");
+            in.readFully(fingerprint);
+            length = in.readInt();
+            checksum = in.readInt();
+            if (length <= 0 || length > MAX_BYTES) throw new IOException("Invalid state length.");
+        }
+
+        void checkEnd(DataInputStream in, int crc) throws IOException {
+            if (in.read() != -1 || crc != checksum) throw new IOException("This state file is damaged.");
         }
     }
 

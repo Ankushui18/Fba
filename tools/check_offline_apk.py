@@ -107,12 +107,14 @@ def inspect_manifest(aapt2, apk, link):
     require(re.search(r":exported\([^)]*\)=(?:true|\(type 0x12\)0xffffffff)(?:\s|$)", tree),
             "the launcher must be explicitly exported")
     badging = subprocess.check_output([aapt2, "dump", "badging", apk], text=True)
-    package = re.search(r"^package: name='([^']+)'", badging, re.M)
-    require(package and package[1] in PACKAGES, "unexpected application ID")
-    suffix, label = PACKAGES[package[1]]
-    installed_variant = re.search(r"versionName='([^']+)'", badging)
-    expected_version = r"\d+\.\d+\.\d+" + re.escape(suffix + ("-link" if link else ""))
-    require(installed_variant and re.fullmatch(expected_version, installed_variant[1]), "wrong APK variant")
+    package = re.search(r"^package: name='([^']+)' versionCode='([0-9]+)' versionName='([^']+)'", badging, re.M)
+    require(package and package[1] in PACKAGES, "unexpected application ID or version metadata")
+    version_code = int(package[2])
+    # Older pinned downloads still have their original labels. The app IDs are unchanged.
+    suffix, label = PACKAGES[package[1]] if version_code < 7 else ("", "FBA Arcade")
+    version = r"0\.5\.2" if version_code == 7 else r"\d+\.\d+\.\d+"
+    expected_version = version + re.escape(suffix + ("-link" if link else ""))
+    require(re.fullmatch(expected_version, package[3]), "wrong APK version or variant")
     require(f"application-label:'{label}'" in badging, "unexpected launcher label")
     require(re.search(r"^(?:sdkVersion|minSdkVersion):'26'$", badging, re.M) and
             "targetSdkVersion:'37'" in badging, "unexpected effective SDK levels")

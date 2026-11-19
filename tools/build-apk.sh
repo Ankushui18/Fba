@@ -18,37 +18,44 @@ core=${FBNEO_SOURCE:-$root/.cache/FBNeo-libretro}
 abis=${ANDROID_ABIS:-arm64-v8a}
 min_sdk=26
 target_sdk=37
-version=0.5.1
-version_code=6
+version=0.5.2
+version_code=7
+artifact_suffix=
 java_package=io.github.ankushui18.fbaoffline
 recovery=${ARCADE_RECOVERY:-0}
 test_package=io.github.ankushui18.fbaarcade.test
 test_key=arcade-test
 test_cn='FBA Arcade Test Build'
-app_label='FBA Arcade'
+expected_cert=
 case $recovery in
   0) ;;
   1)
     [[ -z ${APK_KEYSTORE:-} ]] || { echo 'ARCADE_RECOVERY=1 uses its own local test key.' >&2; exit 1; }
-    version+=-recovery
+    artifact_suffix=-recovery
     test_package=io.github.ankushui18.fbaarcade.recovery
     test_key=arcade-recovery-test
-    app_label='FBA Arcade Recovery'
-    [[ -f $root/.cache/signing/$test_key.jks ]] || {
-      echo 'The original Recovery key is missing. Use ARCADE_RECOVERY=preview for a separate install.' >&2
-      exit 1
-    }
+    expected_cert=9a536eff83d3a9892a458927edcbb4e7209ccab339094f726c676d2ec197e1a3
     ;;
   preview)
     [[ -z ${APK_KEYSTORE:-} ]] || { echo 'Recovery Preview uses its own local test key.' >&2; exit 1; }
-    version+=-recovery-preview
+    artifact_suffix=-preview
     test_package=io.github.ankushui18.fbaarcade.recovery.preview
     test_key=arcade-recovery-preview-test
-    test_cn='FBA Arcade Recovery Preview Test Build'
-    app_label='FBA Arcade Recovery Preview'
+    expected_cert=d8a45e30010cfbee84fef2227b3e0c98e585046658c0a0582df0845d8fd0d396
     ;;
   *) echo 'ARCADE_RECOVERY must be 0, 1, or preview.' >&2; exit 1 ;;
 esac
+if [[ -n $expected_cert ]]; then
+  upgrade_key="$root/.cache/signing/$test_key.jks"
+  [[ -f $upgrade_key ]] || {
+    echo "The $test_key upgrade key is missing. A new key cannot update this app." >&2; exit 1
+  }
+  fingerprint=$("$JAVA_HOME/bin/keytool" -exportcert -keystore "$upgrade_key" -alias "$test_key" -storepass "$test_key" | sha256sum)
+  [[ ${fingerprint%% *} == "$expected_cert" ]] || {
+    echo "The signing certificate does not match the installed $test_package build." >&2; exit 1
+  }
+fi
+artifact_version="$version$artifact_suffix"
 manifest_package=()
 if [[ -z ${APK_KEYSTORE:-} ]]; then
   manifest_package=(--rename-manifest-package "$test_package")
@@ -60,7 +67,7 @@ core_out="$root/build/core"
 verify_args=()
 case ${ARCADE_LINK:-0} in
   0) ;;
-  1) variant=link; core_out="$root/build/core-link"; version+=-link; verify_args=(--link) ;;
+  1) variant=link; core_out="$root/build/core-link"; version+=-link; artifact_version+=-link; verify_args=(--link) ;;
   *) echo 'ARCADE_LINK must be 0 or 1.' >&2; exit 1 ;;
 esac
 
@@ -114,12 +121,6 @@ if [[ $variant == link ]]; then
   cp "$root/android/patches/fbneo-lockstep.patch" "$work/assets/FBNeo-LINK.patch"
   printf '\nThis Link build applies FBNeo-LINK.patch to initialize the existing deterministic mode before driver startup.\n' >> "$work/assets/CORE-SOURCE.txt"
 fi
-if [[ $recovery != 0 ]]; then
-  sed "s/android:label=\"FBA Arcade\"/android:label=\"$app_label\"/" \
-    "$manifest" > "$work/RecoveryManifest.xml"
-  manifest="$work/RecoveryManifest.xml"
-fi
-
 # Keep the checked-in legacy PNG pixels/chunks unchanged for the APK allowlist.
 "$bsdk/aapt2" compile --no-crunch --dir "$main/res" -o "$work/res.zip"
 "$bsdk/aapt2" link -I "$jar" --java "$work/generated" --manifest "$manifest" -A "$work/assets" \
@@ -156,7 +157,7 @@ else
   password=(--ks-pass "pass:$test_key" --key-pass "pass:$test_key")
   flavor=test
   if [[ ! -e $ks ]]; then
-    [[ $recovery != 1 ]] || { echo 'Original Recovery key is missing.' >&2; exit 1; }
+    [[ $recovery == 0 ]] || { echo 'Upgrade key is missing.' >&2; exit 1; }
     mkdir -p "$(dirname -- "$ks")"
     (umask 077; "$JAVA_HOME/bin/keytool" -genkeypair -keystore "$ks" -storetype PKCS12 \
       -storepass "$test_key" -keypass "$test_key" -alias "$key" -keyalg RSA -keysize 3072 \
@@ -164,7 +165,7 @@ else
   fi
 fi
 arch=${abis// /-}
-apk="${APK_OUTPUT:-$root/artifacts/fba-arcade-$version-$arch-$flavor.apk}"
+apk="${APK_OUTPUT:-$root/artifacts/fba-arcade-$artifact_version-$arch-$flavor.apk}"
 "$bsdk/apksigner" sign --ks "$ks" --ks-key-alias "$key" "${password[@]}" \
   --v1-signing-enabled false --v2-signing-enabled true --v3-signing-enabled true --v4-signing-enabled false \
   --out "$work/signed.apk" "$work/aligned.apk"

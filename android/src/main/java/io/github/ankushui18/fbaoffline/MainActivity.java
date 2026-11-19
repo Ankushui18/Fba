@@ -44,6 +44,7 @@ import java.io.OutputStream;
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -64,6 +65,7 @@ import static io.github.ankushui18.fbaoffline.Joypad.directions;
 
 public final class MainActivity extends Activity implements GameSession.Callbacks {
     private static final int PICK_ZIPS = 101, PICK_FOLDER = 102, PICK_ART = 103, EXPORT_SHOT = 104, PICK_SKIN = 105;
+    private static final int EXPORT_BACKUP = 106, RESTORE_BACKUP = 107;
     private static final int MAX_BATCH = 64, HISTORY_LIMIT = 24;
     private static final String RECENT_FILES = "recent_roms", FAVORITES = "favorites";
     private static final String[] PAD_MODES = {"Custom", "Auto (game buttons)", "Compact (fixed)"};
@@ -83,6 +85,7 @@ public final class MainActivity extends Activity implements GameSession.Callback
     private GameCatalog catalog;
     private LibraryTools libraryTools;
     private RomFolders romFolders;
+    private BackupDocuments backups;
     private SkinStore skins;
     private LinkMenu linkMenu;
     private boolean foreground, importing, muted, touchVisible, loaded;
@@ -108,6 +111,7 @@ public final class MainActivity extends Activity implements GameSession.Callback
         inputManager = getSystemService(android.hardware.input.InputManager.class);
         if (inputManager != null) inputManager.registerInputDeviceListener(devices, null);
         settings = getSharedPreferences("arcade_ui", MODE_PRIVATE);
+        backups = new BackupDocuments(this, settings);
         skins = new SkinStore(new File(privateData, "controller-skins"));
         refreshSkin();
         if (saved != null) { artSet = saved.getString("artSet"); exportPath = saved.getString("exportPath"); }
@@ -442,6 +446,15 @@ public final class MainActivity extends Activity implements GameSession.Callback
             return;
         }
         if (importing || game != null) return;
+        if (request == EXPORT_BACKUP || request == RESTORE_BACKUP) {
+            if (chosenUri == null || !"content".equals(chosenUri.getScheme())) {
+                showLibrary("Choose a file with the Android document picker.");
+            } else if (request == EXPORT_BACKUP) {
+                libraryJob("Exporting save slots and settings…", () -> backups.exportZip(chosenUri), slots ->
+                        showLibrary("Backup ZIP saved · " + slots + (slots == 1 ? " save slot" : " save slots") + " + settings. Keep a copy outside the app."));
+            } else confirmRestore(chosenUri);
+            return;
+        }
         if (request == PICK_FOLDER) { romFolders.picked(chosenUri); return; }
         if (request == PICK_SKIN) {
             libraryJob("Copying controller skin…", () -> skins.install(getContentResolver(), chosenUri), added -> {
@@ -790,20 +803,54 @@ public final class MainActivity extends Activity implements GameSession.Callback
     }
 
     private void showSettings() {
-        if (editor != null || importing) return;
-        String[] items = {"Virtual controls", "Display & audio", "Physical keys", "Browse ROM folder", "Quick guide", "Core license", "Reset game settings"};
+        if (editor != null || importing || game != null) return;
+        library.hideKeyboard();
+        String[] items = {"Virtual controls", "Display & audio", "Physical keys", "Backup & restore", "Browse ROM folder", "Quick guide", "Core license", "Reset game settings"};
         new AlertDialog.Builder(this).setTitle("Settings · Global defaults").setItems(items, (d, which) -> {
             switch (which) {
                 case 0: showControls(); break;
                 case 1: showDisplay(); break;
                 case 2: showKeyBindings(); break;
-                case 3: browseRoms(); break;
-                case 4: showGuide(); break;
-                case 5: showLicense(); break;
-                case 6: resetSettings(); break;
+                case 3: showBackup(); break;
+                case 4: browseRoms(); break;
+                case 5: showGuide(); break;
+                case 6: showLicense(); break;
+                case 7: resetSettings(); break;
                 default: break;
             }
         }).setNegativeButton("Close", null).show();
+    }
+
+    private void showBackup() {
+        new AlertDialog.Builder(this).setTitle("Backup & restore")
+                .setMessage("Export save states, slot names and portable settings to a ZIP. Use Pause → Save in each game before exporting. Keep the ZIP in Downloads for a reinstall, or copy it to your new phone.\n\n"
+                        + "ROMs, patches, in-game battery saves, previews and imported artwork aren't included. Keep your original files separately.")
+                .setPositiveButton("Export ZIP", (d, w) -> chooseBackup(true))
+                .setNeutralButton("Restore ZIP", (d, w) -> chooseBackup(false))
+                .setNegativeButton("Close", null).show();
+    }
+
+    private void chooseBackup(boolean export) {
+        if (importing || game != null) return;
+        Intent pick = new Intent(export ? Intent.ACTION_CREATE_DOCUMENT : Intent.ACTION_OPEN_DOCUMENT)
+                .addCategory(Intent.CATEGORY_OPENABLE).putExtra(Intent.EXTRA_LOCAL_ONLY, true);
+        if (export) pick.setType("application/zip").putExtra(Intent.EXTRA_TITLE, "FBA-Arcade-Backup-" + LocalDate.now() + ".zip")
+                .addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+        else pick.setType("*/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION); // Some providers label ZIPs generically.
+        try { startActivityForResult(pick, export ? EXPORT_BACKUP : RESTORE_BACKUP); }
+        catch (android.content.ActivityNotFoundException missing) { showLibrary("This device doesn't have a system file picker."); }
+    }
+
+    private void confirmRestore(Uri document) {
+        new AlertDialog.Builder(this).setTitle("Restore this backup ZIP?")
+                .setMessage("Only restore a backup you made. Existing save slots stay unchanged; the ZIP fills empty slots. Settings in the ZIP replace matching settings on this device.\n\n"
+                        + "To load a restored slot, use the same ROM ZIP and, for patched saves, the same IPS files applied in the same order.")
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Restore", (d, w) -> libraryJob("Checking and restoring backup…", () -> backups.restoreZip(document), result -> {
+                    library.reloadSettings();
+                    refreshSkin();
+                    showLibrary("Backup restored · " + result.slots + " new slots · " + result.kept + " occupied slots kept · " + result.settings + " settings applied.");
+                })).show();
     }
 
     private AlertDialog.Builder settingsPanel(String title, Runnable reopened) {

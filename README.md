@@ -6,21 +6,23 @@ update of the original `com.joyemu.fbaapp`.
 
 ## Install and play
 
-**0.5.1 Recovery Preview** includes the image-filter timing fix. The signed
-APKs below are for 64-bit ARM phones on **Android 8 or later**.
+**FBA Arcade 0.5.2** adds [Backup & restore](#back-up-saves-and-settings) and
+keeps the 0.5.1 image-filter timing fix. These signed APKs are for 64-bit ARM
+phones on **Android 8 or later**.
 
 | Download from GitHub | Use it for |
 |---|---|
-| [**Offline APK**](https://github.com/Ankushui18/Fba/raw/refs/heads/arena/efa257c2-fba/artifacts/fba-arcade-0.5.1-recovery-preview-arm64-v8a-test.apk) | Solo play, **zero Android permissions**. |
-| [**Link APK**](https://github.com/Ankushui18/Fba/raw/refs/heads/arena/efa257c2-fba/artifacts/fba-arcade-0.5.1-recovery-preview-link-arm64-v8a-test.apk) | Optional [local multiplayer](docs/LINK_PLAY.md), also includes solo play. |
+| [**Offline APK**](https://github.com/Ankushui18/Fba/raw/refs/heads/arena/efa257c2-fba/artifacts/fba-arcade-0.5.2-preview-arm64-v8a-test.apk) | Solo play, **zero Android permissions**. |
+| [**Link APK**](https://github.com/Ankushui18/Fba/raw/refs/heads/arena/efa257c2-fba/artifacts/fba-arcade-0.5.2-preview-link-arm64-v8a-test.apk) | Optional [local multiplayer](docs/LINK_PLAY.md), also includes solo play. |
 
-Download the `.apk`, not the [SHA-256 list](artifacts/FBA-Arcade-0.5.1-Recovery-Preview-SHA256SUMS.txt).
-**Recovery Preview installs separately.** Do not uninstall your older app.
-Its ROMs, saves and settings stay there and do not transfer automatically.
-Offline and Link share the Preview app ID and signer, so they replace each
-other. If you have the original Recovery signing key, `ARCADE_RECOVERY=1`
-can instead build an in-place update for that Recovery install. The downloads
-above are not that update.
+Download the `.apk`, not the [SHA-256 list](artifacts/FBA-Arcade-0.5.2-SHA256SUMS.txt).
+**Install over 0.5.1 Recovery Preview without uninstalling.** The app ID and
+signer are unchanged, so the update keeps its library, saves and settings. The
+launcher now says **FBA Arcade**. Offline and Link replace each other.
+
+The separately signed original **FBA Arcade Recovery** and **FBA4droid** are not
+updated by these APKs. Leave them installed if you need their data. The backup
+feature only reads data from the FBA Arcade install you're using.
 
 The previous [0.4.0 Recovery prerelease](https://github.com/Ankushui18/Fba/releases/tag/v0.4.0-recovery)
 is unchanged. See the [feature-by-feature 1.77 comparison](docs/FBA4DROID_PARITY.md)
@@ -53,6 +55,34 @@ for the restored features and remaining compatibility gaps.
 The library gear edits global defaults. In a game settings panel, choose
 **For this game** to customize it or **Use global** to clear overrides. The
 round stick maps digital directions, not analog trackball or lightgun input.
+
+### Back up saves and settings
+
+1. In each game whose progress you want to transfer, use **Pause → Save** to
+   write a save-state slot, then return to the library. Open **Settings → Backup
+   & restore → Export ZIP** and choose a location such as **Downloads**. Keep a
+   copy of the ZIP off the phone before a reinstall or a phone change.
+2. On the destination install, choose **Settings → Backup & restore → Restore
+   ZIP** and confirm. The app adds missing slots and **never overwrites occupied
+   slots**. Settings included in the ZIP replace matching settings; preferences
+   not in the ZIP stay as they are. The result lists added and skipped slots.
+3. Re-import the **same ROM ZIPs** (and required parent/BIOS files) separately.
+   For an IPS save, recreate the variant with the same files in the same apply
+   order. Load from **Pause → Load** or **Game row ⋮ → Save states** (under the
+   IPS profile for a patched save). Save states still check the ROM/variant
+   fingerprint and FBNeo version at load time.
+
+The ZIP includes save states and slot names, plus portable global and per-game
+settings (including display, audio, controller layouts and bindings, built-in
+skin choices, and library display preferences). It does **not** include ROMs,
+BIOS, IPS files, in-game battery/memory-card saves, high scores, previews or
+screenshots, custom skins/notes/cheats, favorites/history, or Android folder
+permissions. Keep your original files separately and reselect folders as needed.
+
+This is a manual, unencrypted ZIP, not a full device backup. Restore only ZIPs
+exported by your own FBA Arcade install. Backups support up to 256 MiB expanded
+and 4,096 files. Keep enough free device space for a private temporary copy of
+the ZIP and the unpacked saves during restore.
 
 ### Image-filter performance
 
@@ -100,7 +130,9 @@ browser remembers one read-only folder grant where supported; **Forget** release
 it without deleting any copies. ZIPs, notes, skins and patches are copied to
 private storage and stay on the device. Limits: 64 ZIPs per file selection, 256
 items per folder listing, and 512 MiB per ZIP. Uninstalling deletes this install's
-data. Export screenshots you want to keep.
+data. Export a backup ZIP and any screenshots you want to keep first. Manual
+backup/restore uses the Android document picker; it doesn't add permissions,
+a cloud account or automatic uploads.
 The optional Link APK adds narrowly scoped local multiplayer traffic and no
 background service. See [asset provenance and privacy](docs/PRIVACY_AND_CORE.md).
 
@@ -118,8 +150,8 @@ export ANDROID_NDK_HOME="$ANDROID_SDK_ROOT/ndk/28.2.13676358"
 ./tools/build-apk.sh
 ARCADE_LINK=1 ./tools/build-apk.sh
 ./tools/test.sh
-./tools/verify-apk.sh artifacts/fba-arcade-0.5.1-arm64-v8a-test.apk
-./tools/verify-apk.sh artifacts/fba-arcade-0.5.1-link-arm64-v8a-test.apk --link
+./tools/verify-apk.sh artifacts/fba-arcade-0.5.2-arm64-v8a-test.apk
+./tools/verify-apk.sh artifacts/fba-arcade-0.5.2-link-arm64-v8a-test.apk --link
 ```
 
 No Gradle/Maven dependencies or legacy APK files are needed. `tools/build-core.sh`
@@ -139,12 +171,12 @@ separate two-core protocol test, see [Link setup](docs/LINK_PLAY.md#host-test).
 
 **Signing:** By default the scripts use a local test key under `.cache/signing/`
 (never checked in) and the ID `io.github.ankushui18.fbaarcade.test`. Keep the
-matching key for upgrades. `ARCADE_RECOVERY=1 ./tools/build-apk.sh` builds
-`io.github.ankushui18.fbaarcade.recovery` and requires the previously used
-Recovery test key rather than generating a replacement. Use
-`ARCADE_RECOVERY=preview ./tools/build-apk.sh` without that key to build the
-separate `io.github.ankushui18.fbaarcade.recovery.preview` app. Add `ARCADE_LINK=1`
-for Link beta. Neither package migrates another app's private data.
+matching key for upgrades. `ARCADE_RECOVERY=preview ./tools/build-apk.sh`
+uses `io.github.ankushui18.fbaarcade.recovery.preview`, the app ID of the
+published APKs, and requires the original Preview key. `ARCADE_RECOVERY=1`
+uses `io.github.ankushui18.fbaarcade.recovery` and requires that separate app's
+key. The script verifies each upgrade certificate and will not generate
+replacement keys for these IDs. Add `ARCADE_LINK=1` for Link beta.
 `APK_KEYSTORE` and `APK_KEY_ALIAS` use
 your own signer and the original frontend ID `io.github.ankushui18.fbaoffline`;
 the script prompts for the password locally. A new key cannot update an

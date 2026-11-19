@@ -74,9 +74,7 @@ final class LibraryScreen extends LinearLayout {
         this.catalog = catalog;
         this.prefs = prefs;
         this.actions = actions;
-        sort = Math.max(0, Math.min(SORTS.length - 1, prefs.getInt("sorting", 0)));
-        tiles = prefs.getBoolean("tiles", false);
-        chinese = prefs.getBoolean("chinese_names", false);
+        readPreferences();
         setOrientation(VERTICAL);
         setBackgroundColor(PAGE);
         setFocusableInTouchMode(true);
@@ -254,7 +252,19 @@ final class LibraryScreen extends LinearLayout {
         notice.setText(note);
         notice.setVisibility(note == null ? GONE : VISIBLE);
         add.setEnabled(!importing); folder.setEnabled(!importing);
+        sortButton.setEnabled(!importing); viewButton.setEnabled(!importing);
         refresh();
+    }
+
+    private void readPreferences() {
+        sort = Math.max(0, Math.min(SORTS.length - 1, prefs.getInt("sorting", 0)));
+        tiles = prefs.getBoolean("tiles", false);
+        chinese = prefs.getBoolean("chinese_names", false);
+    }
+
+    void reloadSettings() {
+        readPreferences();
+        viewButton.setText(tiles ? "List" : "Grid");
     }
 
     void refreshCatalog() { refresh(); }

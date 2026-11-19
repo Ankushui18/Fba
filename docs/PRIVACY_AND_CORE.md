@@ -91,7 +91,7 @@ memory changes that already happened.
 ## Feature parity and intentional gaps
 
 See the [FBA4droid 1.77 comparison](FBA4DROID_PARITY.md) for the original evidence,
-the 0.4.0 baseline and the changes in **0.5.0**. The Recovery app remembers one
+the 0.4.0 baseline and the changes in **0.5.0**. FBA Arcade remembers one
 read-only Android folder grant. It only copies selected content to private
 storage and can release the grant independently of any copy. Skin imports keep
 only allowed, re-encoded PNG frames; local game info keeps plain text only,
@@ -116,6 +116,13 @@ There is no DNS, cloud service, discovery, SDK tracker or background listener.
 The host and guest exchange set fingerprints and control data, not ROM/state
 files. The frontend has no arbitrary host-side code execution or install path.
 
+**Manual backup in 0.5.2:** Android system backup stays disabled. Only the
+selected document URI is read or written; no grant or raw preferences file
+is copied. Restore stages the ZIP in private cache, checks bounded sizes,
+entry paths, completeness, checksums, slot headers and typed settings, and
+only then adds missing slots. The ROM fingerprint is checked at load time.
+Checksums detect damage, not who made the ZIP. Restore your own backups only.
+
 ## Verification and installation
 
 - Both ARM64 APKs pass v2/v3 signature, launcher-only manifest, payload/CRC,
@@ -131,7 +138,8 @@ files. The frontend has no arbitrary host-side code execution or install path.
   The linker is explicitly configured for 16 KiB. Use official tools and a
   current NDK before public distribution.
 - `tools/test.sh` checks imports, custom/auto/compact layouts, multitouch,
-  private state validation, IPS, INI validation, HQx pixel parity and frame handoff,
+  state validation, backup round trips and no-overwrite/error handling,
+  IPS, INI validation, HQx pixel parity and frame handoff,
   the local link protocol and payload indexes. `tools/smoke-core.sh` runs a
   synthetic board program on the unchanged pinned Linux core: video, PCM, both player inputs, DIP,
   imported cheat writes, state restore/reset, and actual changed video from an
@@ -168,3 +176,10 @@ flavors share their own ID and signer, so they replace each other. The signed
 `9a536eff83d3a9892a458927edcbb4e7209ccab339094f726c676d2ec197e1a3`) and a higher
 versionCode (5 and 6), so 0.5.1 can update 0.5.0 or 0.4.0 Recovery without
 uninstalling.
+
+The published 0.5.2 APKs use **FBA Arcade** as the launcher label, code 7, and
+the same app ID (`io.github.ankushui18.fbaarcade.recovery.preview`) and signer
+(SHA-256 `d8a45e30010cfbee84fef2227b3e0c98e585046658c0a0582df0845d8fd0d396`)
+as 0.5.1 Recovery Preview. They are in-place updates for that install, not
+for original Recovery. Their Offline and Link FBNeo binaries match the
+previous flavor-specific core hashes.
