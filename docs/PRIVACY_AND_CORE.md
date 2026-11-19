@@ -186,8 +186,9 @@ flavors share their own ID and signer, so they replace each other. The signed
 versionCode (5 and 6), so 0.5.1 can update 0.5.0 or 0.4.0 Recovery without
 uninstalling.
 
-The current 0.5.3 APK uses launcher label **FBA Arcade**, version code 8,
+The current 0.5.4 APK uses launcher label **FBA Arcade**, version code 9,
 and the same app ID (`io.github.ankushui18.fbaarcade.recovery.preview`) and
 signer (SHA-256 `d8a45e30010cfbee84fef2227b3e0c98e585046658c0a0582df0845d8fd0d396`)
-as 0.5.2 and 0.5.1 Recovery Preview. It cannot update original Recovery. The
-Link FBNeo core bytes and compatibility ID are unchanged.
+as 0.5.3, 0.5.2 and 0.5.1 Recovery Preview. It cannot update original Recovery.
+This library UI update changes neither the Link core bytes nor the protocol,
+and requires no new permissions.

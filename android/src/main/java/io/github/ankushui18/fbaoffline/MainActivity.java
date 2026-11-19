@@ -209,7 +209,7 @@ public final class MainActivity extends Activity implements GameSession.Callback
     private void applySystemBars() {
         Window window = getWindow();
         boolean playing = game != null || editor != null;
-        window.setStatusBarColor(playing ? Color.BLACK : ArcadeUi.NAVY);
+        window.setStatusBarColor(playing ? Color.BLACK : ArcadeUi.PAGE);
         window.setNavigationBarColor(playing ? Color.BLACK : ArcadeUi.PAGE);
         window.setSoftInputMode(playing ? WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
                 : WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
@@ -225,8 +225,8 @@ public final class MainActivity extends Activity implements GameSession.Callback
         if (Build.VERSION.SDK_INT >= 30) {
             WindowInsetsController controller = window.getInsetsController();
             if (controller != null) {
-                controller.setSystemBarsAppearance(playing ? 0 : WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS,
-                        WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS);
+                int light = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
+                controller.setSystemBarsAppearance(playing ? 0 : light, light);
                 if (playing) {
                     controller.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
                     controller.hide(WindowInsets.Type.systemBars());
@@ -235,7 +235,7 @@ public final class MainActivity extends Activity implements GameSession.Callback
         } else {
             window.getDecorView().setSystemUiVisibility(playing ? View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
                     | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                    | View.SYSTEM_UI_FLAG_LAYOUT_STABLE : View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
+                    | View.SYSTEM_UI_FLAG_LAYOUT_STABLE : View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
         }
     }
 
@@ -258,6 +258,7 @@ public final class MainActivity extends Activity implements GameSession.Callback
         if (library.getParent() == null) {
             setContentView(library);
             applySystemBars();
+            library.scrollToTop();
             library.requestFocus();
             library.requestApplyInsets();
         }
@@ -279,14 +280,14 @@ public final class MainActivity extends Activity implements GameSession.Callback
         if (importing || game != null) return;
         PopupMenu menu = new PopupMenu(this, anchor);
         boolean favorite = favorites().contains(file.getName());
-        menu.getMenu().add(0, 1, 0, "Game info");
-        menu.getMenu().add(0, 2, 1, favorite ? "Remove from Favorites" : "Add to Favorites");
-        menu.getMenu().add(0, 3, 2, "Choose thumbnail image");
-        if (catalog.cover(GameCatalog.setName(file.getName())).isFile()) menu.getMenu().add(0, 4, 3, "Restore original thumbnail");
-        menu.getMenu().add(0, 6, 4, "Save states");
-        menu.getMenu().add(0, 7, 5, "IPS patches");
-        menu.getMenu().add(0, 8, 6, "Cheat files");
-        if (LinkMenu.AVAILABLE) menu.getMenu().add(0, 9, 7, "Local multiplayer · beta");
+        if (LinkMenu.AVAILABLE) menu.getMenu().add(0, 9, 0, "Local multiplayer");
+        menu.getMenu().add(0, 6, 1, "Save states");
+        menu.getMenu().add(0, 2, 2, favorite ? "Remove from Favorites" : "Add to Favorites");
+        menu.getMenu().add(0, 1, 3, "Game info");
+        menu.getMenu().add(0, 7, 4, "IPS patches");
+        menu.getMenu().add(0, 8, 5, "Cheat files");
+        menu.getMenu().add(0, 3, 6, "Choose thumbnail image");
+        if (catalog.cover(GameCatalog.setName(file.getName())).isFile()) menu.getMenu().add(0, 4, 7, "Restore original thumbnail");
         menu.getMenu().add(0, 5, 8, "Remove local copy");
         menu.setOnMenuItemClickListener(item -> {
             switch (item.getItemId()) {
@@ -520,14 +521,17 @@ public final class MainActivity extends Activity implements GameSession.Callback
                 if (why == null) why = "Check that the ZIP is local, correctly named and within 512 MiB, and that storage is available.";
             }
         }
-        finishImport("Imported " + added + " of " + chosen.size() + " ZIP(s)." + (why == null ? "" : " " + why)
-                + (folderNote == null ? "" : " " + folderNote));
+        String summary = added == 0 ? "No games added."
+                : added < chosen.size() ? "Added " + added + " of " + chosen.size() + " ZIPs."
+                : (added == 1 ? "ZIP added." : added + " ZIPs added.") + " Tap a game to play.";
+        finishImport(added > 0, summary + (why == null ? "" : " " + why) + (folderNote == null ? "" : " " + folderNote));
     }
 
-    private void finishImport(String summary) {
+    private void finishImport(boolean added, String summary) {
         runOnUiThread(() -> {
             if (isFinishing() || isDestroyed()) return;
             importing = false;
+            if (added) library.revealGames();
             showLibrary(summary);
         });
     }
@@ -854,8 +858,8 @@ public final class MainActivity extends Activity implements GameSession.Callback
         if (editor != null || importing || game != null) return;
         library.hideKeyboard();
         String[] items = {"Virtual controls", "Display & audio", "Physical keys", "Quick Resume · " + status(quickResumeEnabled()),
-                "Backup & restore", "Browse ROM folder", "Quick guide", "Core license", "Reset game settings"};
-        new AlertDialog.Builder(this).setTitle("Settings · Global defaults").setItems(items, (d, which) -> {
+                "Backup & restore", "Browse ROM folder", "How to play", "Core license", "Reset game settings"};
+        new AlertDialog.Builder(this).setTitle("Settings").setItems(items, (d, which) -> {
             switch (which) {
                 case 0: showControls(); break;
                 case 1: showDisplay(); break;
@@ -1171,7 +1175,7 @@ public final class MainActivity extends Activity implements GameSession.Callback
 
     private void showGuide() {
         new AlertDialog.Builder(this).setTitle("How to play")
-                .setMessage("1. Import ROM ZIPs or open Files → Browse folder to remember and navigate a device folder. Keep the FBNeo names and import any parent or BIOS ZIPs alongside them. No ROMs or BIOS are included.\n\n"
+                .setMessage("1. Tap Add games (or + Add) to pick game ZIPs, or use Settings → Browse ROM folder. Keep the FBNeo names and include any parent or BIOS ZIPs. No ROMs or BIOS are included.\n\n"
                         + "2. Tap a game, then tap Coin and Start. Touch controls and connected gamepads can be used together.\n\n"
                         + "3. Tap Pause for cheats, save slots and game settings. Under Controls → Edit layout, drag each control and change its size. Rotate to edit the other layout.\n\n"
                         + "4. Open the ⋮ menu on a game row to manage states, import local notes or cheats, or launch a separate IPS variant.\n\n"

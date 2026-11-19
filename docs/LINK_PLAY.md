@@ -1,10 +1,10 @@
 # FBA Arcade Link beta
 
-Install the [FBA Arcade 0.5.3 APK](../README.md#install-and-play) on both phones.
-It includes solo play and Link multiplayer, and updates 0.5.2 or 0.5.1 Recovery
-Preview without uninstalling. It does not update the separately signed original
-Recovery. The wire and compatibility ID are unchanged from 0.5.0; 0.4.0 peers
-are still rejected.
+Install the [FBA Arcade 0.5.4 APK](../README.md#install-and-play) on both phones.
+It includes solo play and Link multiplayer, and updates 0.5.3, 0.5.2 or 0.5.1
+Recovery Preview without uninstalling. It does not update the separately signed
+original Recovery. The wire and compatibility ID are unchanged from 0.5.0;
+0.4.0 peers are still rejected.
 
 ## Start a two-player game
 

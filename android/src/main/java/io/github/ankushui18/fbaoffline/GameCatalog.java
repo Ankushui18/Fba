@@ -46,13 +46,8 @@ final class GameCatalog {
         }
         String title(boolean chineseNames) { return chineseNames && !chinese.isEmpty() ? chinese : english; }
         String subtitle() {
-            String details = String.join(" · ", nonEmpty(board, year));
-            return details.isEmpty() ? set + ".zip" : details + " · " + set + ".zip";
-        }
-        private static java.util.List<String> nonEmpty(String... values) {
-            java.util.List<String> out = new java.util.ArrayList<>();
-            for (String value : values) if (!value.isEmpty()) out.add(value);
-            return out;
+            if (board.isEmpty()) return year.isEmpty() ? set + ".zip" : year;
+            return year.isEmpty() ? board : board + " · " + year;
         }
     }
 
@@ -92,7 +87,7 @@ final class GameCatalog {
         String key = game.set + "@" + screenshot.lastModified();
         if (key.equals(view.getTag())) return;
         view.setTag(key);
-        view.setImageResource(R.drawable.legacy_ui_games);
+        view.setImageResource(R.drawable.ic_library_pad);
         Bitmap saved = icons.get(key);
         if (saved != null) { view.setImageBitmap(saved); return; }
         worker.execute(() -> {

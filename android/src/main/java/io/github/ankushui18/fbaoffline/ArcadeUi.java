@@ -19,7 +19,7 @@ import android.widget.TextView;
 
 /** Shared styling for the library, controller picker and in-game menu. */
 final class ArcadeUi {
-    static final int PAGE = 0xffeef4fa, WHITE = Color.WHITE, INK = 0xff132d48, MUTED = 0xff4e667d;
+    static final int PAGE = 0xfff5f7fb, WHITE = Color.WHITE, INK = 0xff132d48, MUTED = 0xff4e667d;
     static final int BLUE = 0xff146bc0, NAVY = 0xff104b89, LIGHT_BLUE = 0xffe3f0ff, BORDER = 0xffd4e3f1;
     static final int NIGHT = 0xff101e30, NIGHT_EDGE = 0xff334962, NIGHT_DIM = 0xffb0c9e0;
     private final Context context;

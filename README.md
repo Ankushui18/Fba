@@ -1,21 +1,22 @@
 # FBA Arcade
 
 An independent Android frontend for FinalBurn Neo, with the supplied
-FBA4droid's game art, blue library and original controller skins. It is not an
+FBA4droid's game art and original controller skins. It is not an
 update of the original `com.joyemu.fbaapp`.
 
 ## Install and play
 
-[**Download FBA Arcade 0.5.3 APK**](https://github.com/Ankushui18/Fba/raw/refs/heads/arena/efa257c2-fba/artifacts/fba-arcade-0.5.3-preview-link-arm64-v8a-test.apk)
-— signed, 64-bit ARM, **Android 8 or later**. This update adds [Quick Resume](#quick-resume)
-and keeps offline solo play, [local Wi-Fi/Bluetooth multiplayer](docs/LINK_PLAY.md),
-[Backup & restore](#back-up-saves-and-settings), and the 0.5.1 image-filter timing
-fix in a single APK. There is no separate Offline build.
+[**Download FBA Arcade 0.5.4 APK**](https://github.com/Ankushui18/Fba/raw/refs/heads/arena/efa257c2-fba/artifacts/fba-arcade-0.5.4-preview-link-arm64-v8a-test.apk)
+— signed, 64-bit ARM, **Android 8 or later**. The opening screen gives new
+users a single **Add games** button, and the populated library puts **Continue**
+and games first. The same APK includes offline solo play, [local Wi-Fi/Bluetooth
+multiplayer](docs/LINK_PLAY.md), [Quick Resume](#quick-resume), and
+[Backup & restore](#back-up-saves-and-settings). There is no separate Offline build.
 
-Download the `.apk`, not the [SHA-256 checksum](artifacts/FBA-Arcade-0.5.3-SHA256SUMS.txt).
-**Install over 0.5.2 (Link or the earlier Offline flavor) or 0.5.1 Recovery
-Preview without uninstalling.** The app ID and signer match, so the library,
-saves and settings stay in place.
+Download the `.apk`, not the [SHA-256 checksum](artifacts/FBA-Arcade-0.5.4-SHA256SUMS.txt).
+**Install over 0.5.3, 0.5.2 (Link or the earlier Offline flavor), or 0.5.1
+Recovery Preview without uninstalling.** The app ID and signer match, so the
+library, saves and settings stay in place.
 
 The separately signed original **FBA Arcade Recovery** and **FBA4droid** are not
 updated by this APK. Leave them installed if you need their data. The backup
@@ -25,11 +26,12 @@ The previous [0.4.0 Recovery prerelease](https://github.com/Ankushui18/Fba/relea
 is unchanged. See the [feature-by-feature 1.77 comparison](docs/FBA4DROID_PARITY.md)
 for the restored features and remaining compatibility gaps.
 
-1. In **Games**, tap the folder icon to pick ZIPs, or use **Files → Browse folder**.
-   The Android picker can remember a folder grant; browse its subfolders and
-   choose ZIPs to copy. Import compatible ROM archives you have the right to use.
-   Keep the FBNeo set names and import any required parent and BIOS ZIPs too.
-   A legacy FB Alpha archive with the same name may be a different revision.
+1. Tap **Add games** on the welcome screen (or **+ Add** once games are in your
+   library). Choose compatible ZIPs you have the right to use. Keep the FBNeo set
+   names and include any required parent and BIOS ZIPs. A legacy FB Alpha archive
+   with the same name may be a different revision. To import from a folder, use
+   **Browse folder** on the welcome screen or **Settings → Browse ROM folder**.
+   The Android picker can remember that folder so you can browse it again.
 2. Tap a game, then **Coin** and **Start**. Use touch, an Android gamepad, or a
    keyboard. Keyboard defaults: arrows for movement, X/Z/S/A/W/Q for arcade
    A–F, Space for Coin, Enter for Start and Escape for Pause.
@@ -38,7 +40,7 @@ for the restored features and remaining compatibility gaps.
 
 | Where | What it does |
 |---|---|
-| **Games → Sorting / Filter** | List/grid with thumbnails, Favorites, Recent, search, board/category filters, English/Chinese titles and sorting by title, set, year, import date or board. |
+| **Filter & sort** | Board/category filters, list/grid layout, English/Chinese titles and sorting by title, set, year, import date or board. Search, Favorites and Recent stay on the library screen. |
 | **Game row ⋮ → Game info** | Catalog and artwork plus **Local note** to import/replace/remove an old `.rominfo` `.htm`/`.html` or `.txt` note. Only plain text is kept. The row menu can still import a cover, restore art or remove the private ZIP copy without deleting saves. |
 | **Game row ⋮ → Save states** | Preview, rename and delete individual slots, or launch directly from a slot. **Pause → Save / Load** uses the same six slots. **Pause → Screenshot** captures a clean frame, updates the cover/patch preview, and can export PNG. |
 | **Game row ⋮ → IPS patches** | Import a single `.ips` by chip, browse a legacy `.dat` folder for simple multi-file packs, or **Apply selected** profiles together. Each saved variant has its own preview, states and battery storage. The source ZIP is unchanged. |
@@ -165,7 +167,7 @@ export ANDROID_SDK_ROOT=/path/to/android-sdk
 export ANDROID_NDK_HOME="$ANDROID_SDK_ROOT/ndk/28.2.13676358"
 ./tools/build-apk.sh
 ./tools/test.sh
-./tools/verify-apk.sh artifacts/fba-arcade-0.5.3-link-arm64-v8a-test.apk
+./tools/verify-apk.sh artifacts/fba-arcade-0.5.4-link-arm64-v8a-test.apk
 ```
 
 No Gradle/Maven dependencies or legacy APK files are needed. `tools/build-core.sh`

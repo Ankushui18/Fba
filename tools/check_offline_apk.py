@@ -14,6 +14,7 @@ from link_manifest import LINK_PERMISSIONS
 
 
 ART_PATHS = {f"res/drawable-nodpi-v4/{name}" for name in ART}
+LIBRARY_ICONS = {f"res/drawable/ic_library_{name}.xml" for name in ("add", "clear", "more", "pad", "play", "settings")}
 APP = "io.github.ankushui18.fbaoffline"  # Java/JNI namespace, independent of installed application ID
 PACKAGES = {
     APP: ("", "FBA Arcade"),
@@ -113,13 +114,14 @@ def inspect_manifest(aapt2, apk, link):
     require(version_code < 8 or link, "current APKs must include local multiplayer")
     # Older pinned downloads still have their original labels. The app IDs are unchanged.
     suffix, label = PACKAGES[package[1]] if version_code < 7 else ("", "FBA Arcade")
-    released_versions = {7: "0.5.2", 8: "0.5.3"}
+    released_versions = {7: "0.5.2", 8: "0.5.3", 9: "0.5.4"}
     version = re.escape(released_versions[version_code]) if version_code in released_versions else r"\d+\.\d+\.\d+"
     expected_version = version + re.escape(suffix + ("-link" if link else ""))
     require(re.fullmatch(expected_version, package[3]), "wrong APK version or variant")
     require(f"application-label:'{label}'" in badging, "unexpected launcher label")
     require(re.search(r"^(?:sdkVersion|minSdkVersion):'26'$", badging, re.M) and
             "targetSdkVersion:'37'" in badging, "unexpected effective SDK levels")
+    return version_code
 
 
 def inspect_dex(dex, link):
@@ -175,12 +177,14 @@ def inspect_png(data, name):
 
 
 def main(aapt2, apk, link=False):
-    inspect_manifest(aapt2, apk, link)
+    version_code = inspect_manifest(aapt2, apk, link)
     with ZipFile(apk) as z:
         require(z.testzip() is None, "archive CRC error")
         entries = set(z.namelist())
         require(len(entries) == len(z.infolist()), "duplicate archive entries")
         mandatory = {"AndroidManifest.xml", "classes.dex", "resources.arsc", "res/drawable/ic_search.xml"} | ASSETS | ART_PATHS
+        if version_code >= 9:
+            mandatory |= LIBRARY_ICONS
         if link:
             patch = "assets/FBNeo-LINK.patch"
             mandatory.add(patch)
