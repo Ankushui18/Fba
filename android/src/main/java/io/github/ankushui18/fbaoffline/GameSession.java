@@ -185,9 +185,12 @@ final class GameSession implements Runnable {
         boolean started = false;
         String error = null;
         AudioTrack audio = null;
-        File definition = null, isolated = null;
+        File definition = null, isolated = null, nesRun = null;
+        boolean nes = NesStore.isNesArchive(rom.getName());
         try {
-            File[] leftovers = app.getCacheDir().listFiles((dir, name) -> name.startsWith("ips-run-") || name.startsWith("link-run-"));
+            if (nes && (link != null || patch != null)) throw new IOException("NES games currently support solo play without IPS variants.");
+            File[] leftovers = app.getCacheDir().listFiles((dir, name) -> name.startsWith("ips-run-")
+                    || name.startsWith("link-run-") || name.startsWith("nes-run-"));
             if (leftovers != null) for (File temp : leftovers) LocalFiles.deleteTree(temp);
             File saves = saveDir;
             if (link != null) {
@@ -205,12 +208,22 @@ final class GameSession implements Runnable {
             // Check the snapshot before opening the driver; a mismatched ZIP must not boot or write solo battery data.
             byte[] resumeState = continuing ? quickResume.load(states) : null;
             if (stopping) return;
+            File launchRom = rom;
+            if (nes) {
+                // Preserve the library name and fingerprint; expose the path layout the NES core expects.
+                nesRun = Files.createTempDirectory(app.getCacheDir().toPath(), "nes-run-").toFile();
+                launchRom = NesStore.stage(rom, nesRun.toPath());
+                if (stopping) return;
+            }
             if (link == null) try {
                 definition = GameCatalog.stageCheats(app, system, rom);
             } catch (IOException ignored) { /* A catalog/cache error must not block playing. */ }
             // FBNeo reloads the INI on variable changes and reset, not just during discovery.
-            error = Core.open(rom.getAbsolutePath(), system.getAbsolutePath(), saves.getAbsolutePath(), patch != null, link != null);
-            if (error != null) return;
+            error = Core.open(launchRom.getAbsolutePath(), system.getAbsolutePath(), saves.getAbsolutePath(), patch != null, link != null);
+            if (error != null) {
+                if (nes) error = "Couldn't start this NES set. Re-add a compatible .nes file or the matching FBNeo NES ZIP.";
+                return;
+            }
             started = true;
             if (stopping) return;
             short[] samples = new short[8192];
@@ -331,6 +344,7 @@ final class GameSession implements Runnable {
             if (started) Core.close();
             if (definition != null) definition.delete();
             LocalFiles.deleteTree(isolated);
+            LocalFiles.deleteTree(nesRun);
             if (error != null && !stopping) callbacks.failed(this, error);
         }
     }

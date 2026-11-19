@@ -64,6 +64,7 @@ python3 tools/compare_legacy.py fba4droid_18644.apk /path/to/FBNeo /path/to/FBNe
 | `gameicon.zip` | 3,847 bounded RGBA thumbnails. The original ICO decoder is not bundled. Look up the exact set first, then parent art or a fallback icon. A user-picked image or a captured frame can override the thumbnail. |
 | `drvrom.xml`, `listcn.txt` | Board, grouped categories and Chinese titles. Joined locally to the pinned arcade DAT for English titles, ROM dependencies and year/manufacturer. The 10,095 rows are metadata, not a supported-games count. |
 | Pinned FBNeo arcade DAT | Indexed names, sizes and CRCs for the chips of 8,545 sets, used to select an IPS target. No chip data is stored. |
+| Pinned FBNeo NES DAT | 2,964 set names, titles, years, sizes and CRCs for the local `.nes` importer. `tools/make-nes-index.py` checks the DAT hash and regenerates the metadata-only TSV. No ROM data is stored in the index. |
 | `cheat_en.zip`, `cheat.zip` | Sanitized, exact-set definitions for 3,131 arcade sets, with English preferred and Chinese fallback. Unsupported groups, includes and non-byte-triple rules are excluded; all remaining groups start off. |
 
 `tools/import_legacy_art.py` records each PNG's source path and validates the
@@ -186,9 +187,12 @@ flavors share their own ID and signer, so they replace each other. The signed
 versionCode (5 and 6), so 0.5.1 can update 0.5.0 or 0.4.0 Recovery without
 uninstalling.
 
-The current 0.5.4 APK uses launcher label **FBA Arcade**, version code 9,
+The current 0.5.5 APK uses launcher label **FBA Arcade**, version code 10,
 and the same app ID (`io.github.ankushui18.fbaarcade.recovery.preview`) and
 signer (SHA-256 `d8a45e30010cfbee84fef2227b3e0c98e585046658c0a0582df0845d8fd0d396`)
-as 0.5.3, 0.5.2 and 0.5.1 Recovery Preview. It cannot update original Recovery.
-This library UI update changes neither the Link core bytes nor the protocol,
-and requires no new permissions.
+as 0.5.4, 0.5.3, 0.5.2 and 0.5.1 Recovery Preview. It cannot update original
+Recovery. The NES importer changes neither the native libraries nor the Link
+protocol and adds no permissions. It wraps compatible `.nes` files in private
+ZIPs. Game launch copies the selected NES ZIP to a temporary directory named
+`nes` so FBNeo identifies the system, while saves and backups keep the original
+private library identity.

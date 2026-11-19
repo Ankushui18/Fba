@@ -23,6 +23,7 @@ PACKAGES = {
     "io.github.ankushui18.fbaarcade.recovery.preview": ("-recovery-preview", "FBA Arcade Recovery Preview"),
 }
 CATALOG_ASSETS = {"assets/game-art.zip", "assets/game-catalog.tsv", "assets/game-cheats.zip", "assets/ips-targets.zip"}
+NES_INDEX_ASSET = "assets/nes-sets.tsv"
 CATALOG_DIR = Path(__file__).resolve().parents[1] / "android/src/main"
 NATIVE = re.compile(r"lib/(arm64-v8a|x86_64)/lib(retro|offlinefb|hqx)\.so\Z")
 ASSETS = {
@@ -114,7 +115,7 @@ def inspect_manifest(aapt2, apk, link):
     require(version_code < 8 or link, "current APKs must include local multiplayer")
     # Older pinned downloads still have their original labels. The app IDs are unchanged.
     suffix, label = PACKAGES[package[1]] if version_code < 7 else ("", "FBA Arcade")
-    released_versions = {7: "0.5.2", 8: "0.5.3", 9: "0.5.4"}
+    released_versions = {7: "0.5.2", 8: "0.5.3", 9: "0.5.4", 10: "0.5.5"}
     version = re.escape(released_versions[version_code]) if version_code in released_versions else r"\d+\.\d+\.\d+"
     expected_version = version + re.escape(suffix + ("-link" if link else ""))
     require(re.fullmatch(expected_version, package[3]), "wrong APK version or variant")
@@ -185,6 +186,8 @@ def main(aapt2, apk, link=False):
         mandatory = {"AndroidManifest.xml", "classes.dex", "resources.arsc", "res/drawable/ic_search.xml"} | ASSETS | ART_PATHS
         if version_code >= 9:
             mandatory |= LIBRARY_ICONS
+        if version_code >= 10:
+            mandatory.add(NES_INDEX_ASSET)
         if link:
             patch = "assets/FBNeo-LINK.patch"
             mandatory.add(patch)
@@ -197,7 +200,7 @@ def main(aapt2, apk, link=False):
             if name in ART_PATHS:
                 require(info.file_size <= 256 * 1024, f"overlong PNG: {name}")
                 inspect_png(z.read(info), name)
-            if name in CATALOG_ASSETS:
+            if name in CATALOG_ASSETS or name == NES_INDEX_ASSET:
                 expected = CATALOG_DIR / name
                 require(info.file_size == expected.stat().st_size and z.read(info) == expected.read_bytes(),
                         f"catalog bundle differs from source: {name}")

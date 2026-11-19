@@ -37,6 +37,7 @@ final class GameCatalog {
     };
     private volatile boolean closed;
     private ZipFile art;
+    private NesStore nes;
 
     static final class Game {
         final String set, english, chinese, board, year, company, parent, dependency, genre;
@@ -58,17 +59,29 @@ final class GameCatalog {
 
     void load(Runnable done) {
         worker.execute(() -> {
+            HashMap<String, Game> decoded = new HashMap<>();
             try (BufferedReader in = new BufferedReader(new InputStreamReader(app.getAssets().open("game-catalog.tsv"), StandardCharsets.UTF_8))) {
-                HashMap<String, Game> decoded = new HashMap<>();
                 String line;
                 while ((line = in.readLine()) != null) {
                     String[] row = line.split("\t", -1);
                     if (row.length == 9) decoded.put(row[0], new Game(row));
                 }
-                games = Collections.unmodifiableMap(decoded);
             } catch (IOException ignored) { /* Show archive names when catalog is unavailable. */ }
+            try {
+                for (NesStore.Entry entry : nesSets().entries()) {
+                    String name = NesStore.PREFIX + entry.set;
+                    decoded.put(name, new Game(new String[] {name, entry.title, "", "NES / Famicom", entry.year, "", "", "", ""}));
+                }
+            } catch (IOException ignored) { /* Existing ZIPs can still be launched. */ }
+            games = Collections.unmodifiableMap(decoded);
             main.post(() -> { if (!closed) done.run(); });
         });
+    }
+
+    // Called by the catalog and import workers, never from a game row or the UI thread.
+    synchronized NesStore nesSets() throws IOException {
+        if (nes == null) nes = NesStore.load(app.getAssets().open(NesStore.INDEX));
+        return nes;
     }
 
     static String setName(String filename) { return filename.substring(0, filename.length() - 4); }

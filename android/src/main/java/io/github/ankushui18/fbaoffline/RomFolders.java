@@ -74,7 +74,7 @@ final class RomFolders {
     private static Page readPage(DocumentFolder folder, List<DocumentFolder.Entry> path) throws IOException {
         try {
             return new Page(folder, path, folder.list(path.get(path.size() - 1).id, MAX_ITEMS,
-                    e -> e.folder || isRomZip(e.name) || isLegacy(e.name)));
+                    e -> e.folder || isGameFile(e.name) || isLegacy(e.name)));
         } catch (java.io.InterruptedIOException cancelled) { throw cancelled; }
         catch (IOException unavailable) { return new Page(folder, path, null); }
     }
@@ -107,12 +107,12 @@ final class RomFolders {
         List<Runnable> actions = new ArrayList<>();
         boolean root = page.path.size() == 1;
         if (!root) add(labels, actions, "↑  Up one folder", () -> up(page));
-        ArrayList<Uri> zips = new ArrayList<>();
+        ArrayList<Uri> files = new ArrayList<>();
         for (DocumentFolder.Entry entry : page.listing.entries) {
-            if (!entry.folder && isRomZip(entry.name)) zips.add(page.folder.uri(entry.id));
+            if (!entry.folder && isGameFile(entry.name)) files.add(page.folder.uri(entry.id));
         }
-        if (!zips.isEmpty()) add(labels, actions, "Import " + zips.size() + " ZIP(s) in this folder", () ->
-                confirmCopy(zips, page.listing.limited ? "Only the listed ZIPs were imported." : null, page));
+        if (!files.isEmpty()) add(labels, actions, "Import " + files.size() + " game file(s) in this folder", () ->
+                confirmCopy(files, page.listing.limited ? "Only the listed files were imported." : null, page));
         if (page.listing.limited) add(labels, actions, "Listing limit reached · choose a smaller folder", () -> show(page));
         for (DocumentFolder.Entry entry : page.listing.entries) {
             String label = entry.label();
@@ -130,7 +130,7 @@ final class RomFolders {
                             .setPositiveButton("Back to folder", (d, w) -> show(page)).show());
             else add(labels, actions, label, () -> confirmCopy(Collections.singletonList(page.folder.uri(entry.id)), null, page));
         }
-        if (labels.isEmpty()) add(labels, actions, "No ROM ZIPs or subfolders found", () -> show(page));
+        if (labels.isEmpty()) add(labels, actions, "No game files or subfolders found", () -> show(page));
         dialog.setItems(labels.toArray(new String[0]), (d, which) -> actions.get(which).run()).show();
     }
 
@@ -139,8 +139,8 @@ final class RomFolders {
     }
 
     private void confirmCopy(List<Uri> files, String note, Page page) {
-        new AlertDialog.Builder(activity).setTitle("Import " + files.size() + " ZIP(s)?")
-                .setMessage("Copies ZIPs into the private library, replacing local copies with the same filename. Source files and saves aren't changed. Subfolders are not imported automatically.")
+        new AlertDialog.Builder(activity).setTitle(files.size() == 1 ? "Add this game file?" : "Add " + files.size() + " game files?")
+                .setMessage("This makes private copies of the selected ZIPs or supported .nes files. It may replace a local copy of the same set. Source files and saves aren't deleted. Subfolders are not included.")
                 .setNegativeButton("Back", (d, w) -> show(page))
                 .setPositiveButton("Import", (d, w) -> host.copy(files, note)).show();
     }
@@ -159,7 +159,8 @@ final class RomFolders {
         labels.add(label); actions.add(action);
     }
 
-    private static boolean isRomZip(String name) {
+    private static boolean isGameFile(String name) {
+        if (NesStore.isRaw(name)) return true;
         try { RomStore.archiveName(name); return true; }
         catch (IOException invalid) { return false; }
     }

@@ -6,15 +6,15 @@ update of the original `com.joyemu.fbaapp`.
 
 ## Install and play
 
-[**Download FBA Arcade 0.5.4 APK**](https://github.com/Ankushui18/Fba/raw/refs/heads/arena/efa257c2-fba/artifacts/fba-arcade-0.5.4-preview-link-arm64-v8a-test.apk)
-— signed, 64-bit ARM, **Android 8 or later**. The opening screen gives new
-users a single **Add games** button, and the populated library puts **Continue**
-and games first. The same APK includes offline solo play, [local Wi-Fi/Bluetooth
-multiplayer](docs/LINK_PLAY.md), [Quick Resume](#quick-resume), and
-[Backup & restore](#back-up-saves-and-settings). There is no separate Offline build.
+[**Download FBA Arcade 0.5.5 APK**](https://github.com/Ankushui18/Fba/raw/refs/heads/arena/efa257c2-fba/artifacts/fba-arcade-0.5.5-preview-link-arm64-v8a-test.apk)
+— signed, 64-bit ARM, **Android 8 or later**. **Add games** now accepts
+[supported NES cartridge files](#nes-and-famicom) as well as FBNeo ZIPs. The same
+APK includes offline solo play, [local Wi-Fi/Bluetooth multiplayer](docs/LINK_PLAY.md),
+[Quick Resume](#quick-resume), and [Backup & restore](#back-up-saves-and-settings).
+There is no separate Offline build.
 
-Download the `.apk`, not the [SHA-256 checksum](artifacts/FBA-Arcade-0.5.4-SHA256SUMS.txt).
-**Install over 0.5.3, 0.5.2 (Link or the earlier Offline flavor), or 0.5.1
+Download the `.apk`, not the [SHA-256 checksum](artifacts/FBA-Arcade-0.5.5-SHA256SUMS.txt).
+**Install over 0.5.4, 0.5.3, 0.5.2 (Link or the earlier Offline flavor), or 0.5.1
 Recovery Preview without uninstalling.** The app ID and signer match, so the
 library, saves and settings stay in place.
 
@@ -27,14 +27,30 @@ is unchanged. See the [feature-by-feature 1.77 comparison](docs/FBA4DROID_PARITY
 for the restored features and remaining compatibility gaps.
 
 1. Tap **Add games** on the welcome screen (or **+ Add** once games are in your
-   library). Choose compatible ZIPs you have the right to use. Keep the FBNeo set
-   names and include any required parent and BIOS ZIPs. A legacy FB Alpha archive
-   with the same name may be a different revision. To import from a folder, use
-   **Browse folder** on the welcome screen or **Settings → Browse ROM folder**.
-   The Android picker can remember that folder so you can browse it again.
-2. Tap a game, then **Coin** and **Start**. Use touch, an Android gamepad, or a
-   keyboard. Keyboard defaults: arrows for movement, X/Z/S/A/W/Q for arcade
-   A–F, Space for Coin, Enter for Start and Escape for Pause.
+   library). Choose files you have the right to use. For arcade ZIPs, keep the
+   FBNeo set names and include any required parent and BIOS ZIPs. A legacy FB
+   Alpha archive with the same name may be a different revision. To import from
+   a folder, use **Browse folder** on the welcome screen or **Settings → Browse
+   ROM folder**. The Android picker can remember that folder for next time.
+2. Tap a game, then **Coin → Start** for arcade or **Start** for NES. Use touch,
+   an Android gamepad, or a keyboard. Keyboard defaults: arrows for movement,
+   X/Z/S/A/W/Q for arcade A–F, Space for Coin/Select, Enter for Start and Escape
+   for Pause.
+
+### NES and Famicom
+
+Pick a `.nes` file directly. No renaming, manual ZIP packing or separate NES
+folder is needed. FBA Arcade checks the iNES header, file size and CRC-32
+against the [pinned NES DAT](https://github.com/libretro/FBNeo/blob/2da48555c13ce5d011edf2d6ec829b7393c070af/dats/FinalBurn%20Neo%20%28ClrMame%20Pro%20XML%2C%20NES%20Games%20only%29.dat).
+For example, **Super Mario Bros. (World)** is `smb` (40,976 bytes, CRC-32
+`3337ec46`). The matching FBNeo `smb.zip` or `nes_smb.zip` works too. Re-add a
+bare NES ZIP imported with an older app so it is identified as NES.
+
+A different dump, ROM hack or header may not match this FBNeo revision even
+if another emulator plays it. Only matching cartridge files are supported, not
+Famicom Disk System or other console file formats through this importer. NES
+runs in solo mode with regular saves and optional Quick Resume. Link and IPS
+profiles are not enabled for NES. No games are bundled.
 
 ## Game and library tools
 
@@ -146,7 +162,8 @@ The Android picker gives read access to the files or folder you select. The ROM
 browser remembers one read-only folder grant where supported; **Forget** releases
 it without deleting any copies. ZIPs, notes, skins and patches are copied to
 private storage and stay on the device. Limits: 64 ZIPs per file selection, 256
-items per folder listing, and 512 MiB per ZIP. Uninstalling deletes this install's
+items per folder listing, and 512 MiB per arcade ZIP (NES: 10 MiB per `.nes`,
+32 MiB per playable ZIP). Uninstalling deletes this install's
 data. Export a backup ZIP and any screenshots you want to keep first. Manual
 backup/restore uses the Android document picker; it doesn't add permissions,
 a cloud account or automatic uploads.
@@ -167,7 +184,7 @@ export ANDROID_SDK_ROOT=/path/to/android-sdk
 export ANDROID_NDK_HOME="$ANDROID_SDK_ROOT/ndk/28.2.13676358"
 ./tools/build-apk.sh
 ./tools/test.sh
-./tools/verify-apk.sh artifacts/fba-arcade-0.5.4-link-arm64-v8a-test.apk
+./tools/verify-apk.sh artifacts/fba-arcade-0.5.5-link-arm64-v8a-test.apk
 ```
 
 No Gradle/Maven dependencies or legacy APK files are needed. `tools/build-core.sh`

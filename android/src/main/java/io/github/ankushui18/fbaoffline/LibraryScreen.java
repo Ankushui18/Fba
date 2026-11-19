@@ -178,7 +178,7 @@ final class LibraryScreen extends LinearLayout {
         if (Build.VERSION.SDK_INT >= 28) intro.setAccessibilityHeading(true);
         panel.addView(intro);
         ui.space(panel, 8);
-        TextView tip = ui.text("Choose game ZIP files from your device. Games aren't included.", 15, MUTED, false);
+        TextView tip = ui.text("Choose a game ZIP or .nes file. Games aren't included.", 15, MUTED, false);
         tip.setGravity(Gravity.CENTER);
         tip.setLineSpacing(ui.dp(3), 1f);
         panel.addView(tip);

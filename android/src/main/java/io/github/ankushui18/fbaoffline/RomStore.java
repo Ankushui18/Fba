@@ -43,6 +43,16 @@ final class RomStore {
 
     // Lower byte limit for unit tests without huge fixtures.
     static void importZip(Path directory, String sourceName, InputStream in, long limit) throws IOException {
+        importZip(directory, sourceName, in, limit, null);
+    }
+
+    interface ZipName { String resolve(String name, ZipFile validated) throws IOException; }
+
+    static void importZip(Path directory, String sourceName, InputStream in, ZipName resolver) throws IOException {
+        importZip(directory, sourceName, in, MAX_BYTES, resolver);
+    }
+
+    private static void importZip(Path directory, String sourceName, InputStream in, long limit, ZipName resolver) throws IOException {
         String name = archiveName(sourceName);
         Files.createDirectories(directory);
         Path temp = Files.createTempFile(directory, ".import-", ".part");
@@ -58,7 +68,7 @@ final class RomStore {
                     out.write(buffer, 0, read);
                 }
             }
-            validateZip(temp);
+            name = validateZip(temp, name, resolver);
             checkInterrupted();
             Files.move(temp, directory.resolve(name), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
         } finally {
@@ -70,7 +80,7 @@ final class RomStore {
         if (Thread.currentThread().isInterrupted()) throw new InterruptedIOException("Import cancelled.");
     }
 
-    private static void validateZip(Path path) throws IOException {
+    private static String validateZip(Path path, String archive, ZipName resolver) throws IOException {
         try (ZipFile zip = new ZipFile(path.toFile())) {
             if (zip.size() == 0 || zip.size() > MAX_ENTRIES) throw new IOException("Unsupported ZIP entry count.");
             long total = 0;
@@ -98,6 +108,7 @@ final class RomStore {
                 hasFiles = true;
             }
             if (!hasFiles) throw new IOException("ZIP has no ROM files.");
+            return resolver == null ? archive : archiveName(resolver.resolve(archive, zip));
         }
     }
 }

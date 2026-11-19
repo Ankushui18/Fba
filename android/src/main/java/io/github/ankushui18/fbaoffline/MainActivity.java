@@ -280,11 +280,12 @@ public final class MainActivity extends Activity implements GameSession.Callback
         if (importing || game != null) return;
         PopupMenu menu = new PopupMenu(this, anchor);
         boolean favorite = favorites().contains(file.getName());
-        if (LinkMenu.AVAILABLE) menu.getMenu().add(0, 9, 0, "Local multiplayer");
+        boolean nes = NesStore.isNesArchive(file.getName());
+        if (LinkMenu.AVAILABLE && !nes) menu.getMenu().add(0, 9, 0, "Local multiplayer");
         menu.getMenu().add(0, 6, 1, "Save states");
         menu.getMenu().add(0, 2, 2, favorite ? "Remove from Favorites" : "Add to Favorites");
         menu.getMenu().add(0, 1, 3, "Game info");
-        menu.getMenu().add(0, 7, 4, "IPS patches");
+        if (!nes) menu.getMenu().add(0, 7, 4, "IPS patches");
         menu.getMenu().add(0, 8, 5, "Cheat files");
         menu.getMenu().add(0, 3, 6, "Choose thumbnail image");
         if (catalog.cover(GameCatalog.setName(file.getName())).isFile()) menu.getMenu().add(0, 4, 7, "Restore original thumbnail");
@@ -481,7 +482,7 @@ public final class MainActivity extends Activity implements GameSession.Callback
         }
         if (urls.isEmpty()) return;
         if (urls.size() > MAX_BATCH || (set != null && set.getItemCount() > MAX_BATCH)) {
-            showLibrary("Select up to " + MAX_BATCH + " ZIPs at a time.");
+            showLibrary("Select up to " + MAX_BATCH + " game files at a time.");
             return;
         }
         startZipImport(new ArrayList<>(urls), null);
@@ -497,6 +498,10 @@ public final class MainActivity extends Activity implements GameSession.Callback
     private void importZips(List<Uri> chosen, String folderNote) {
         int added = 0;
         String why = null;
+        NesStore index = null;
+        try { index = catalog.nesSets(); }
+        catch (IOException unavailable) { /* An unavailable index must not block arcade ZIP imports. */ }
+        RomStore.ZipName zipName = index == null ? null : index::archiveTarget;
         for (Uri uri : chosen) {
             if (Thread.currentThread().isInterrupted()) return;
             try {
@@ -509,21 +514,25 @@ public final class MainActivity extends Activity implements GameSession.Callback
                     if (why == null) why = "Old .fba cache files aren't supported. Choose the matching FBNeo ZIP instead.";
                     continue;
                 }
-                RomStore.archiveName(name);
                 try (InputStream in = getContentResolver().openInputStream(uri)) {
                     if (in == null) throw new IOException("Couldn't read the selected file.");
-                    RomStore.importZip(roms.toPath(), name, in);
+                    if (NesStore.isRaw(name)) {
+                        if (index == null) throw new NesStore.Mismatch("The NES compatibility list couldn't be read. Use a matching FBNeo NES ZIP.");
+                        index.importRaw(roms.toPath(), name, in);
+                    } else RomStore.importZip(roms.toPath(), name, in, zipName);
                 }
                 added++;
+            } catch (NesStore.Mismatch mismatch) {
+                if (why == null) why = mismatch.getMessage();
             } catch (java.util.zip.ZipException malformed) {
-                if (why == null) why = "Select ZIP archives that your device can open.";
+                if (why == null) why = "This file isn't a readable game ZIP.";
             } catch (IOException | RuntimeException failure) {
-                if (why == null) why = "Check that the ZIP is local, correctly named and within 512 MiB, and that storage is available.";
+                if (why == null) why = "Choose a correctly named FBNeo ZIP or a supported .nes file. Check available storage.";
             }
         }
         String summary = added == 0 ? "No games added."
-                : added < chosen.size() ? "Added " + added + " of " + chosen.size() + " ZIPs."
-                : (added == 1 ? "ZIP added." : added + " ZIPs added.") + " Tap a game to play.";
+                : added < chosen.size() ? "Added " + added + " of " + chosen.size() + " files."
+                : (added == 1 ? "Game added." : added + " files added.") + " Tap a game to play.";
         finishImport(added > 0, summary + (why == null ? "" : " " + why) + (folderNote == null ? "" : " " + folderNote));
     }
 
@@ -1175,8 +1184,8 @@ public final class MainActivity extends Activity implements GameSession.Callback
 
     private void showGuide() {
         new AlertDialog.Builder(this).setTitle("How to play")
-                .setMessage("1. Tap Add games (or + Add) to pick game ZIPs, or use Settings → Browse ROM folder. Keep the FBNeo names and include any parent or BIOS ZIPs. No ROMs or BIOS are included.\n\n"
-                        + "2. Tap a game, then tap Coin and Start. Touch controls and connected gamepads can be used together.\n\n"
+                .setMessage("1. Tap Add games (or + Add) to pick FBNeo ZIPs or supported .nes files. Keep ZIP set names and add any required parent or BIOS ZIPs. No games or BIOS are included.\n\n"
+                        + "2. Tap a game. Use Start for NES, or Coin then Start for arcade. Touch controls and gamepads can be used together.\n\n"
                         + "3. Tap Pause for cheats, save slots and game settings. Under Controls → Edit layout, drag each control and change its size. Rotate to edit the other layout.\n\n"
                         + "4. Open the ⋮ menu on a game row to manage states, import local notes or cheats, or launch a separate IPS variant.\n\n"
                         + "Independent FinalBurn Neo frontend. Non-commercial use only.")

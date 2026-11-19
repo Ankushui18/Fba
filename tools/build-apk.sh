@@ -23,8 +23,8 @@ core=${FBNEO_SOURCE:-$root/.cache/FBNeo-libretro}
 abis=${ANDROID_ABIS:-arm64-v8a}
 min_sdk=26
 target_sdk=37
-version=0.5.4
-version_code=9
+version=0.5.5
+version_code=10
 artifact_suffix=
 java_package=io.github.ankushui18.fbaoffline
 recovery=${ARCADE_RECOVERY:-0}
@@ -112,7 +112,7 @@ cp "$core/src/burn/drv/snes/license.txt" "$work/assets/licenses/snes.txt"
 cp "$root/android/CORE-SOURCE.txt" "$work/assets/CORE-SOURCE.txt"
 cp "$hqx/COPYING" "$work/assets/licenses/hqx.txt"
 cp "$hqx/AUTHORS" "$work/assets/licenses/hqx-authors.txt"
-cp "$main/assets/"{game-art.zip,game-catalog.tsv,game-cheats.zip,ips-targets.zip} "$work/assets/"
+cp "$main/assets/"{game-art.zip,game-catalog.tsv,game-cheats.zip,ips-targets.zip,nes-sets.tsv} "$work/assets/"
 
 manifest="$work/AndroidManifest.xml"
 python3 "$root/tools/link_manifest.py" "$main/AndroidManifest.xml" "$manifest"
