@@ -23,8 +23,8 @@ core=${FBNEO_SOURCE:-$root/.cache/FBNeo-libretro}
 abis=${ANDROID_ABIS:-arm64-v8a}
 min_sdk=26
 target_sdk=37
-version=0.5.5
-version_code=10
+version=0.5.6
+version_code=11
 artifact_suffix=
 java_package=io.github.ankushui18.fbaoffline
 recovery=${ARCADE_RECOVERY:-0}
@@ -112,12 +112,12 @@ cp "$core/src/burn/drv/snes/license.txt" "$work/assets/licenses/snes.txt"
 cp "$root/android/CORE-SOURCE.txt" "$work/assets/CORE-SOURCE.txt"
 cp "$hqx/COPYING" "$work/assets/licenses/hqx.txt"
 cp "$hqx/AUTHORS" "$work/assets/licenses/hqx-authors.txt"
-cp "$main/assets/"{game-art.zip,game-catalog.tsv,game-cheats.zip,ips-targets.zip,nes-sets.tsv} "$work/assets/"
+cp "$main/assets/"{game-art.zip,game-catalog.tsv,game-cheats.zip,ips-targets.zip,console-sets.tsv} "$work/assets/"
 
 manifest="$work/AndroidManifest.xml"
 python3 "$root/tools/link_manifest.py" "$main/AndroidManifest.xml" "$manifest"
-cp "$root/android/patches/fbneo-lockstep.patch" "$work/assets/FBNeo-LINK.patch"
-printf '\nThis Link build applies FBNeo-LINK.patch to initialize the existing deterministic mode before driver startup.\n' >> "$work/assets/CORE-SOURCE.txt"
+cp "$root/android/patches/fbneo-session.patch" "$work/assets/FBNeo-SESSION.patch"
+printf '\nThis build applies FBNeo-SESSION.patch for deterministic Link startup and safe driver switching in the same process.\n' >> "$work/assets/CORE-SOURCE.txt"
 # Keep the checked-in legacy PNG pixels/chunks unchanged for the APK allowlist.
 "$bsdk/aapt2" compile --no-crunch --dir "$main/res" -o "$work/res.zip"
 "$bsdk/aapt2" link -I "$jar" --java "$work/generated" --manifest "$manifest" -A "$work/assets" \

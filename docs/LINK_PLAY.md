@@ -1,9 +1,9 @@
 # FBA Arcade Link beta
 
-Install the [FBA Arcade 0.5.5 APK](../README.md#install-and-play) on both phones.
-It includes solo play and arcade Link multiplayer, and updates 0.5.4, 0.5.3,
+Install the [FBA Arcade 0.5.6 APK](../README.md#install-and-play) on both phones.
+It includes solo play and arcade Link multiplayer, and updates 0.5.5, 0.5.4, 0.5.3,
 0.5.2 or 0.5.1 Recovery Preview without uninstalling. It does not update the
-separately signed original Recovery. NES imports are solo-only. The wire and
+separately signed original Recovery. Console imports are solo-only. The wire and
 compatibility ID are unchanged from 0.5.0; 0.4.0 peers are still rejected.
 
 ## Start a two-player game
@@ -36,7 +36,7 @@ advertisement permission is requested.
 ## Beta scope
 
 - Both phones run their own FBNeo instances from a new deterministic boot. The
-  Link build applies `android/patches/fbneo-lockstep.patch` to request the
+  Link build applies `android/patches/fbneo-session.patch` to request the
   core's existing deterministic random/time mode before driver init. Local
   Link files are temporary; they do not read or change solo states, scores or
   emulated battery storage. Exiting a Link match never changes Quick Resume.

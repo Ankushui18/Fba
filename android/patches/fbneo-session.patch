@@ -1,0 +1,33 @@
+--- a/src/burner/libretro/libretro.cpp
++++ b/src/burner/libretro/libretro.cpp
+@@ -1329,2 +1329,6 @@
+ 	bLibretroSupportsSavestateContext = environ_cb(RETRO_ENVIRONMENT_GET_SAVESTATE_CONTEXT, NULL);
++	// The lockstep frontend requests deterministic driver initialization, not just state scans.
++	retro_savestate_context context = RETRO_SAVESTATE_CONTEXT_NORMAL;
++	kNetGame = (bLibretroSupportsSavestateContext && environ_cb(RETRO_ENVIRONMENT_GET_SAVESTATE_CONTEXT, &context)
++	            && context == RETRO_SAVESTATE_CONTEXT_ROLLBACK_NETPLAY) ? 1 : 0;
+ 	if (!bLibretroSupportsSavestateContext)
+@@ -2132,2 +2136,3 @@
+ 	const char *dir = NULL;
++	bool driverInitAttempted = false;
+ 	bCDEmuStarted = false;
+@@ -2410,2 +2415,3 @@
+ 		// Initialize game driver
++		driverInitAttempted = true;
+ 		if(BurnDrvInit() == 0)
+@@ -2496,3 +2502,4 @@
+ 	if (nBurnDrvActive != ~0U) {
+-		BurnDrvExit();
++		// A missing ROM/BIOS can reach here before Init. Exit must not touch stale driver state.
++		if (driverInitAttempted) BurnDrvExit();
+ 		nBurnDrvActive = ~0U;
+--- a/src/burner/libretro/retro_input.cpp
++++ b/src/burner/libretro/retro_input.cpp
+@@ -3450,2 +3450,7 @@
+ 	// make sure everything is clean before processing this games's inputs
++	// A frontend can load different drivers without restarting the process.
++	// Publish the new driver's descriptors on its first input poll even if no
++	// libretro controller port changed device type since the previous game.
++	bControllersNeedRefresh = true;
++	bControllersSetOnce = false;
+ 	nSwitchCode = 0;

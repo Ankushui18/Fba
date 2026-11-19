@@ -129,7 +129,7 @@ public final class MainActivity extends Activity implements GameSession.Callback
         romFolders = new RomFolders(this, settings, new RomFolders.Host() {
             @Override public <T> void job(String status, Callable<T> task, Consumer<T> done) { libraryJob(status, task, done); }
             @Override public void choose() { chooseTree(PICK_FOLDER); }
-            @Override public void copy(List<Uri> zips, String note) { startZipImport(zips, note); }
+            @Override public void copy(List<Uri> zips, String note) { startGameImport(zips, note); }
             @Override public void note(String text) { showLibrary(text); }
         });
         showLibrary(null);
@@ -240,7 +240,7 @@ public final class MainActivity extends Activity implements GameSession.Callback
     }
 
     private void showLibrary(String note) {
-        File[] files = roms.listFiles(RomStore::isArchive);
+        File[] files = roms.listFiles(file -> RomStore.isArchive(file) && !ConsoleStore.isFirmware(file.getName()));
         List<File> all = Collections.emptyList();
         if (files != null) {
             Arrays.sort(files, Comparator.comparing(File::getName));
@@ -280,12 +280,12 @@ public final class MainActivity extends Activity implements GameSession.Callback
         if (importing || game != null) return;
         PopupMenu menu = new PopupMenu(this, anchor);
         boolean favorite = favorites().contains(file.getName());
-        boolean nes = NesStore.isNesArchive(file.getName());
-        if (LinkMenu.AVAILABLE && !nes) menu.getMenu().add(0, 9, 0, "Local multiplayer");
+        boolean console = ConsoleSystem.fromArchive(file.getName()) != null;
+        if (LinkMenu.AVAILABLE && !console) menu.getMenu().add(0, 9, 0, "Local multiplayer");
         menu.getMenu().add(0, 6, 1, "Save states");
         menu.getMenu().add(0, 2, 2, favorite ? "Remove from Favorites" : "Add to Favorites");
         menu.getMenu().add(0, 1, 3, "Game info");
-        if (!nes) menu.getMenu().add(0, 7, 4, "IPS patches");
+        if (!console) menu.getMenu().add(0, 7, 4, "IPS patches");
         menu.getMenu().add(0, 8, 5, "Cheat files");
         menu.getMenu().add(0, 3, 6, "Choose thumbnail image");
         if (catalog.cover(GameCatalog.setName(file.getName())).isFile()) menu.getMenu().add(0, 4, 7, "Restore original thumbnail");
@@ -485,21 +485,21 @@ public final class MainActivity extends Activity implements GameSession.Callback
             showLibrary("Select up to " + MAX_BATCH + " game files at a time.");
             return;
         }
-        startZipImport(new ArrayList<>(urls), null);
+        startGameImport(new ArrayList<>(urls), null);
     }
 
-    private void startZipImport(List<Uri> chosen, String note) {
+    private void startGameImport(List<Uri> chosen, String note) {
         if (importing || game != null || chosen.isEmpty()) return;
         importing = true;
         showLibrary("Checking and copying " + chosen.size() + (chosen.size() == 1 ? " file…" : " files…"));
-        importer.execute(() -> importZips(chosen, note));
+        importer.execute(() -> importGames(chosen, note));
     }
 
-    private void importZips(List<Uri> chosen, String folderNote) {
-        int added = 0;
+    private void importGames(List<Uri> chosen, String folderNote) {
+        int added = 0, bios = 0;
         String why = null;
-        NesStore index = null;
-        try { index = catalog.nesSets(); }
+        ConsoleStore index = null;
+        try { index = catalog.consoleSets(); }
         catch (IOException unavailable) { /* An unavailable index must not block arcade ZIP imports. */ }
         RomStore.ZipName zipName = index == null ? null : index::archiveTarget;
         for (Uri uri : chosen) {
@@ -514,26 +514,31 @@ public final class MainActivity extends Activity implements GameSession.Callback
                     if (why == null) why = "Old .fba cache files aren't supported. Choose the matching FBNeo ZIP instead.";
                     continue;
                 }
+                if (ConsoleSystem.isDisc(name)) {
+                    if (why == null) why = "CD disc images aren't supported by this app build yet.";
+                    continue;
+                }
                 try (InputStream in = getContentResolver().openInputStream(uri)) {
                     if (in == null) throw new IOException("Couldn't read the selected file.");
-                    if (NesStore.isRaw(name)) {
-                        if (index == null) throw new NesStore.Mismatch("The NES compatibility list couldn't be read. Use a matching FBNeo NES ZIP.");
+                    if (ConsoleSystem.isRaw(name)) {
+                        if (index == null) throw new ConsoleStore.Mismatch("The FBNeo console compatibility list couldn't be read.");
                         index.importRaw(roms.toPath(), name, in);
-                    } else RomStore.importZip(roms.toPath(), name, in, zipName);
+                    } else if (ConsoleStore.isFirmware(RomStore.importZip(roms.toPath(), name, in, zipName))) bios++;
                 }
                 added++;
-            } catch (NesStore.Mismatch mismatch) {
+            } catch (ConsoleStore.Mismatch mismatch) {
                 if (why == null) why = mismatch.getMessage();
             } catch (java.util.zip.ZipException malformed) {
                 if (why == null) why = "This file isn't a readable game ZIP.";
             } catch (IOException | RuntimeException failure) {
-                if (why == null) why = "Choose a correctly named FBNeo ZIP or a supported .nes file. Check available storage.";
+                if (why == null) why = "Choose a correctly named FBNeo ZIP or a matching console ROM. Check available storage.";
             }
         }
-        String summary = added == 0 ? "No games added."
+        String summary = added == 0 ? "No files added."
                 : added < chosen.size() ? "Added " + added + " of " + chosen.size() + " files."
+                : added == bios ? (bios == 1 ? "BIOS added." : bios + " BIOS files added.") + " Add or launch a game."
                 : (added == 1 ? "Game added." : added + " files added.") + " Tap a game to play.";
-        finishImport(added > 0, summary + (why == null ? "" : " " + why) + (folderNote == null ? "" : " " + folderNote));
+        finishImport(added > bios, summary + (why == null ? "" : " " + why) + (folderNote == null ? "" : " " + folderNote));
     }
 
     private void finishImport(boolean added, String summary) {
@@ -585,7 +590,8 @@ public final class MainActivity extends Activity implements GameSession.Callback
     }
 
     private void launch(File file, PatchStore.Entry patch, int slot, GameLink link, boolean continuing) {
-        if (game != null || importing || editor != null || !RomStore.isArchive(file)) return;
+        if (game != null || importing || editor != null || !RomStore.isArchive(file) || ConsoleStore.isFirmware(file.getName())) return;
+        if (ConsoleSystem.isDisc(file.getName())) { showLibrary("CD disc images aren't supported by this app build yet."); return; }
         if ((!systemDir.isDirectory() && !systemDir.mkdirs()) || (!saveDir.isDirectory() && !saveDir.mkdirs())) {
             showLibrary("Couldn't create private storage for the emulator.");
             return;
@@ -598,7 +604,7 @@ public final class MainActivity extends Activity implements GameSession.Callback
         if (link != null) title += " · Link P" + (link.player() + 1);
         GameScreen screen = new GameScreen(this, title, skin, touchVisible, link, this::gameAction);
         immersiveInsets(screen);
-        GameSession session = new GameSession(this, screen.surface(), file, systemDir, saveDir, catalog.cover(set), patch, slot, link, continuing, this);
+        GameSession session = new GameSession(this, screen.surface(), file, systemDir, saveDir, catalog, catalog.cover(set), patch, slot, link, continuing, this);
         game = session;
         player = screen;
         screen.attach(session);
@@ -1184,8 +1190,8 @@ public final class MainActivity extends Activity implements GameSession.Callback
 
     private void showGuide() {
         new AlertDialog.Builder(this).setTitle("How to play")
-                .setMessage("1. Tap Add games (or + Add) to pick FBNeo ZIPs or supported .nes files. Keep ZIP set names and add any required parent or BIOS ZIPs. No games or BIOS are included.\n\n"
-                        + "2. Tap a game. Use Start for NES, or Coin then Start for arcade. Touch controls and gamepads can be used together.\n\n"
+                .setMessage("1. Tap Add games (or + Add) to pick FBNeo ZIPs or matching console ROMs (.nes, .sfc, .md, .gba and more). Keep ZIP set names and add any required parent or BIOS ZIPs. No games or BIOS are included.\n\n"
+                        + "2. Tap a game. Use the console controls, or Coin then Start for arcade. Touch controls and gamepads can be used together.\n\n"
                         + "3. Tap Pause for cheats, save slots and game settings. Under Controls → Edit layout, drag each control and change its size. Rotate to edit the other layout.\n\n"
                         + "4. Open the ⋮ menu on a game row to manage states, import local notes or cheats, or launch a separate IPS variant.\n\n"
                         + "Independent FinalBurn Neo frontend. Non-commercial use only.")
@@ -1269,7 +1275,7 @@ public final class MainActivity extends Activity implements GameSession.Callback
 
     private static final class Pressed {
         final int port;
-        final SparseIntArray buttons = new SparseIntArray();
+        final SparseIntArray buttons = new SparseIntArray(), computer = new SparseIntArray();
         int axis;
         Pressed(int port) { this.port = port; }
     }
@@ -1284,6 +1290,7 @@ public final class MainActivity extends Activity implements GameSession.Callback
             ports.delete(id);
             hardware.remove(id);
             publishHardware();
+            publishComputerKeys();
         }
     };
 
@@ -1313,6 +1320,18 @@ public final class MainActivity extends Activity implements GameSession.Callback
         }
     }
 
+    private void publishComputerKeys() {
+        if (game == null || !ComputerKeys.supported(game.console)) return;
+        android.util.SparseBooleanArray unique = new android.util.SparseBooleanArray();
+        for (int i = 0; i < hardware.size(); i++) {
+            SparseIntArray pressed = hardware.valueAt(i).computer;
+            for (int j = 0; j < pressed.size(); j++) unique.put(pressed.valueAt(j), true);
+        }
+        int[] next = new int[unique.size()];
+        for (int i = 0; i < next.length; i++) next[i] = unique.keyAt(i);
+        if (!Arrays.equals(next, game.keyboard)) game.keyboard = next;
+    }
+
     @Override public boolean dispatchGenericMotionEvent(MotionEvent event) {
         if (canPlay() && readBool("physical_keys", true) && event.getActionMasked() == MotionEvent.ACTION_MOVE && event.isFromSource(InputDevice.SOURCE_JOYSTICK)) {
             int port = port(event);
@@ -1333,6 +1352,17 @@ public final class MainActivity extends Activity implements GameSession.Callback
             return true;
         }
         if (!canPlay() || !readBool("physical_keys", true)) return super.dispatchKeyEvent(event);
+        if (ComputerKeys.supported(game.console) && event.isFromSource(InputDevice.SOURCE_KEYBOARD)
+                && !event.isFromSource(InputDevice.SOURCE_GAMEPAD) && !KeyEvent.isGamepadButton(key)) {
+            int retroKey = ComputerKeys.code(key);
+            if (retroKey != 0 && (event.getAction() == KeyEvent.ACTION_DOWN || event.getAction() == KeyEvent.ACTION_UP)) {
+                Pressed state = pressed(event.getDeviceId(), 0);
+                if (event.getAction() == KeyEvent.ACTION_DOWN) state.computer.put(key, retroKey);
+                else state.computer.delete(key);
+                publishComputerKeys();
+                return true;
+            }
+        }
         int button = HardwareKeys.mask(key, keyMap, bindings);
         if (button == 0) return super.dispatchKeyEvent(event);
         int port = port(event);

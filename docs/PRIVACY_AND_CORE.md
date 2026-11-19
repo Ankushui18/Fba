@@ -39,16 +39,17 @@ For a second comparison, 3,361 of 4,900 legacy `drvrom.xml` set names (68.59%)
 also appear in the Libretro port's current arcade DAT (8,556 entries). Identical
 names do not guarantee the same ROM CRCs, parent/BIOS needs, or playability.
 
-The regular APK compiles **FBNeo 1.0.0.03** unchanged from the upstream-linked Libretro port at
+The regular APK compiles **FBNeo 1.0.0.03** from the upstream-linked Libretro port at
 [`2da48555`](https://github.com/libretro/FBNeo/tree/2da48555c13ce5d011edf2d6ec829b7393c070af)
 (2026-11-18). It links a new JNI bridge and Android frontend. No compiled
 code or emulator frontend source from the old APK is used. The main project
 and the Libretro port are pinned separately: the former is the comparison
 reference, the latter has the Android build and libretro frontend ABI. The
-APK applies a separate [four-line core patch](../android/patches/fbneo-lockstep.patch)
-so Link's deterministic netplay time and random seed take effect at
-initialization, not only when serializing a state. The patch and core licenses
-are bundled in the APK.
+APK applies the bundled [session patch](../android/patches/fbneo-session.patch).
+It enables deterministic time and random seeds before Link startup, refreshes
+the current driver's control descriptors after switching games, and prevents
+cleanup of an uninitialized driver on a missing-ROM or BIOS error. The patch
+and core licenses are bundled in the APK.
 Reproduce the comparison:
 
 ```sh
@@ -64,7 +65,7 @@ python3 tools/compare_legacy.py fba4droid_18644.apk /path/to/FBNeo /path/to/FBNe
 | `gameicon.zip` | 3,847 bounded RGBA thumbnails. The original ICO decoder is not bundled. Look up the exact set first, then parent art or a fallback icon. A user-picked image or a captured frame can override the thumbnail. |
 | `drvrom.xml`, `listcn.txt` | Board, grouped categories and Chinese titles. Joined locally to the pinned arcade DAT for English titles, ROM dependencies and year/manufacturer. The 10,095 rows are metadata, not a supported-games count. |
 | Pinned FBNeo arcade DAT | Indexed names, sizes and CRCs for the chips of 8,545 sets, used to select an IPS target. No chip data is stored. |
-| Pinned FBNeo NES DAT | 2,964 set names, titles, years, sizes and CRCs for the local `.nes` importer. `tools/make-nes-index.py` checks the DAT hash and regenerates the metadata-only TSV. No ROM data is stored in the index. |
+| Pinned FBNeo console/computer DATs | 21,539 game set names and 20 firmware sets across 19 systems. The metadata-only TSV contains names, years, sizes, CRCs and dependencies. `tools/make-console-index.py` regenerates it from the immutable pinned Git objects. No ROM or BIOS payload is stored in it. |
 | `cheat_en.zip`, `cheat.zip` | Sanitized, exact-set definitions for 3,131 arcade sets, with English preferred and Chinese fallback. Unsupported groups, includes and non-byte-triple rules are excluded; all remaining groups start off. |
 
 `tools/import_legacy_art.py` records each PNG's source path and validates the
@@ -77,6 +78,7 @@ a Python virtual environment and run:
 python tools/import_legacy_art.py
 python tools/prepare_game_catalog.py /path/to/pinned/FBNeo-libretro
 python tools/prepare_rom_targets.py /path/to/pinned/FBNeo-libretro
+python tools/make-console-index.py /path/to/pinned/FBNeo-libretro android/src/main/assets/console-sets.tsv
 ```
 
 Only the current game's INI is staged in private `system/fbneo/cheats` while
@@ -187,12 +189,13 @@ flavors share their own ID and signer, so they replace each other. The signed
 versionCode (5 and 6), so 0.5.1 can update 0.5.0 or 0.4.0 Recovery without
 uninstalling.
 
-The current 0.5.5 APK uses launcher label **FBA Arcade**, version code 10,
+The current 0.5.6 APK uses launcher label **FBA Arcade**, version code 11,
 and the same app ID (`io.github.ankushui18.fbaarcade.recovery.preview`) and
 signer (SHA-256 `d8a45e30010cfbee84fef2227b3e0c98e585046658c0a0582df0845d8fd0d396`)
-as 0.5.4, 0.5.3, 0.5.2 and 0.5.1 Recovery Preview. It cannot update original
-Recovery. The NES importer changes neither the native libraries nor the Link
-protocol and adds no permissions. It wraps compatible `.nes` files in private
-ZIPs. Game launch copies the selected NES ZIP to a temporary directory named
-`nes` so FBNeo identifies the system, while saves and backups keep the original
-private library identity.
+as 0.5.5 through 0.5.1 Recovery Preview. It cannot update original Recovery.
+The console importer adds no permissions or changes to the Link wire protocol.
+It wraps a recognized loose game in a private ZIP and stages the game and
+imported dependencies under the expected system folder for the duration of
+play. The library retains its stable archive names for saves. The specific
+Ninja Gaiden alternate dump is checked by SHA-256 and uses a session-private
+FBNeo override, not a global exception to checksum checks.

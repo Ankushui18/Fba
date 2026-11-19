@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <new>
 #include "engine.h"
+#include "libretro.h"
 #include "frame_filter.h"
 
 namespace {
@@ -61,6 +62,13 @@ extern "C" JNIEXPORT jint JNICALL ENTRY(step)(JNIEnv *env, jclass, jlong input, 
     const jsize len = std::min(static_cast<jsize>(audio.samples), env->GetArrayLength(output));
     if (len > 0) env->SetShortArrayRegion(output, 0, len, audio.pcm);
     return len;
+}
+
+extern "C" JNIEXPORT void JNICALL ENTRY(keyboard)(JNIEnv *env, jclass, jintArray pressed) {
+    jint keys[RETROK_LAST];
+    const auto count = pressed ? std::min(env->GetArrayLength(pressed), static_cast<jsize>(sizeof(keys) / sizeof(keys[0]))) : 0;
+    if (count) env->GetIntArrayRegion(pressed, 0, count, keys);
+    if (!env->ExceptionCheck()) arcade::keyboard(keys, count);
 }
 
 extern "C" JNIEXPORT jint JNICALL ENTRY(frameSize)(JNIEnv *, jclass) {

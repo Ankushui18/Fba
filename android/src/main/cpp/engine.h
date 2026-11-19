@@ -22,6 +22,7 @@ struct Audio {
 const char *open(const char *rom, const char *system, const char *save, bool patched = false, bool linked = false);
 void close();
 bool step(uint64_t input);
+void keyboard(const int *keys, size_t count);
 bool reset();
 size_t stateSize();
 bool saveState(void *data, size_t size);

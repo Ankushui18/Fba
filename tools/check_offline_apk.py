@@ -24,6 +24,7 @@ PACKAGES = {
 }
 CATALOG_ASSETS = {"assets/game-art.zip", "assets/game-catalog.tsv", "assets/game-cheats.zip", "assets/ips-targets.zip"}
 NES_INDEX_ASSET = "assets/nes-sets.tsv"
+CONSOLE_INDEX_ASSET = "assets/console-sets.tsv"
 CATALOG_DIR = Path(__file__).resolve().parents[1] / "android/src/main"
 NATIVE = re.compile(r"lib/(arm64-v8a|x86_64)/lib(retro|offlinefb|hqx)\.so\Z")
 ASSETS = {
@@ -115,7 +116,7 @@ def inspect_manifest(aapt2, apk, link):
     require(version_code < 8 or link, "current APKs must include local multiplayer")
     # Older pinned downloads still have their original labels. The app IDs are unchanged.
     suffix, label = PACKAGES[package[1]] if version_code < 7 else ("", "FBA Arcade")
-    released_versions = {7: "0.5.2", 8: "0.5.3", 9: "0.5.4", 10: "0.5.5"}
+    released_versions = {7: "0.5.2", 8: "0.5.3", 9: "0.5.4", 10: "0.5.5", 11: "0.5.6"}
     version = re.escape(released_versions[version_code]) if version_code in released_versions else r"\d+\.\d+\.\d+"
     expected_version = version + re.escape(suffix + ("-link" if link else ""))
     require(re.fullmatch(expected_version, package[3]), "wrong APK version or variant")
@@ -177,6 +178,15 @@ def inspect_png(data, name):
     require(False, f"missing PNG end: {name}")
 
 
+def inspect_console_drivers(payload, index, abi):
+    rows = [line.split(b"\t", 2)[:2] for line in index.splitlines()]
+    expected = {prefix + b"_" + short for prefix, short in rows}
+    prefixes = b"|".join(sorted({prefix for prefix, _ in rows}))
+    symbols = re.compile(rb"\x00((?:" + prefixes + rb")_[a-z0-9_-]{1,80})(?=\x00)")
+    missing = expected - {match[1] for match in symbols.finditer(payload)}
+    require(not missing, f"console index names drivers missing in {abi}: {sorted(missing)[:6]}")
+
+
 def main(aapt2, apk, link=False):
     version_code = inspect_manifest(aapt2, apk, link)
     with ZipFile(apk) as z:
@@ -186,13 +196,16 @@ def main(aapt2, apk, link=False):
         mandatory = {"AndroidManifest.xml", "classes.dex", "resources.arsc", "res/drawable/ic_search.xml"} | ASSETS | ART_PATHS
         if version_code >= 9:
             mandatory |= LIBRARY_ICONS
-        if version_code >= 10:
+        if version_code >= 11:
+            mandatory.add(CONSOLE_INDEX_ASSET)
+        elif version_code == 10:
             mandatory.add(NES_INDEX_ASSET)
         if link:
-            patch = "assets/FBNeo-LINK.patch"
+            patch, source = ("assets/FBNeo-SESSION.patch", "fbneo-session.patch") if version_code >= 11 else (
+                "assets/FBNeo-LINK.patch", "fbneo-lockstep.patch")
             mandatory.add(patch)
-            require(patch in entries and z.read(patch) == (CATALOG_DIR.parent.parent / "patches/fbneo-lockstep.patch").read_bytes(),
-                    "Link core patch differs from source")
+            require(patch in entries and z.read(patch) == (CATALOG_DIR.parent.parent / "patches" / source).read_bytes(),
+                    "FBNeo patch differs from source")
         require(mandatory <= entries, f"missing files: {mandatory - entries}")
         libraries = {}
         for info in z.infolist():
@@ -200,7 +213,7 @@ def main(aapt2, apk, link=False):
             if name in ART_PATHS:
                 require(info.file_size <= 256 * 1024, f"overlong PNG: {name}")
                 inspect_png(z.read(info), name)
-            if name in CATALOG_ASSETS or name == NES_INDEX_ASSET:
+            if name in CATALOG_ASSETS or name in (NES_INDEX_ASSET, CONSOLE_INDEX_ASSET):
                 expected = CATALOG_DIR / name
                 require(info.file_size == expected.stat().st_size and z.read(info) == expected.read_bytes(),
                         f"catalog bundle differs from source: {name}")
@@ -210,7 +223,10 @@ def main(aapt2, apk, link=False):
             require(match is not None, f"non-allowlisted payload: {name}")
             abi, lib = match.groups()
             require(info.compress_type == ZIP_STORED, f"native library must be stored: {name}")
-            inspect_elf(z.read(info), name, abi, lib)
+            payload = z.read(info)
+            inspect_elf(payload, name, abi, lib)
+            if lib == "retro" and version_code >= 11:
+                inspect_console_drivers(payload, z.read(CONSOLE_INDEX_ASSET), abi)
             libraries.setdefault(abi, set()).add(lib)
         require(libraries and all(libs == {"retro", "offlinefb", "hqx"} for libs in libraries.values()), "incomplete native libraries")
         inspect_dex(z.read("classes.dex"), link)

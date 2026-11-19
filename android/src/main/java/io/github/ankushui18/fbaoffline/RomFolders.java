@@ -140,7 +140,7 @@ final class RomFolders {
 
     private void confirmCopy(List<Uri> files, String note, Page page) {
         new AlertDialog.Builder(activity).setTitle(files.size() == 1 ? "Add this game file?" : "Add " + files.size() + " game files?")
-                .setMessage("This makes private copies of the selected ZIPs or supported .nes files. It may replace a local copy of the same set. Source files and saves aren't deleted. Subfolders are not included.")
+                .setMessage("This makes private copies of the selected game and BIOS files. It may replace a local copy of the same set. Source files and saves aren't deleted. Subfolders are not included.")
                 .setNegativeButton("Back", (d, w) -> show(page))
                 .setPositiveButton("Import", (d, w) -> host.copy(files, note)).show();
     }
@@ -160,7 +160,8 @@ final class RomFolders {
     }
 
     private static boolean isGameFile(String name) {
-        if (NesStore.isRaw(name)) return true;
+        if (ConsoleSystem.isDisc(name)) return false;
+        if (ConsoleSystem.isRaw(name)) return true;
         try { RomStore.archiveName(name); return true; }
         catch (IOException invalid) { return false; }
     }

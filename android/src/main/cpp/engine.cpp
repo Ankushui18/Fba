@@ -19,6 +19,7 @@ float displayAspect;
 double coreFps, coreSampleRate;
 retro_pixel_format pixelFormat;
 uint64_t buttons;
+bool pressedKeys[RETROK_LAST];
 constexpr size_t kMaxState = 48u * 1024 * 1024;
 std::vector<arcade::Option> coreOptions;
 bool optionsDirty, usePatchedRom, localLink;
@@ -250,7 +251,9 @@ void audioSingle(int16_t left, int16_t right) {
 void inputPoll() {}
 
 int16_t inputState(unsigned port, unsigned device, unsigned index, unsigned id) {
-    if (port >= 4 || index != 0 || device != RETRO_DEVICE_JOYPAD) return 0;
+    if (port >= 4 || index != 0) return 0;
+    if (device == RETRO_DEVICE_KEYBOARD) return id < RETROK_LAST && pressedKeys[id];
+    if (device != RETRO_DEVICE_JOYPAD) return 0;
     const auto pad = static_cast<uint16_t>(buttons >> (port * 16u));
     if (id == RETRO_DEVICE_ID_JOYPAD_MASK) return static_cast<int16_t>(pad);
     return id < 16 ? (pad >> id) & 1u : 0;
@@ -287,6 +290,7 @@ const char *open(const char *rom, const char *system, const char *save, bool pat
     usePatchedRom = patched;
     localLink = linked;
     buttons = 0;
+    memset(pressedKeys, 0, sizeof(pressedKeys));
     coreOptions.clear();
     optionsDirty = false;
     displayAspect = 0.f;
@@ -310,7 +314,7 @@ const char *open(const char *rom, const char *system, const char *save, bool pat
     if (!loaded || !driverStarted) {
         close();
         return errorText[0] ? errorText :
-            "FBNeo couldn't start this set. Use a supported arcade ZIP with its original set name, parent and BIOS files if required.";
+            "FBNeo couldn't start this set. Use a supported FBNeo ZIP or matching console ROM, with its parent and BIOS ZIPs if required.";
     }
     retro_system_av_info info = {};
     retro_get_system_av_info(&info);
@@ -324,6 +328,14 @@ bool step(uint64_t input) {
     audioSize = 0;
     retro_run();
     return !shutdownRequested && !failed;
+}
+
+void keyboard(const int *keys, size_t count) {
+    memset(pressedKeys, 0, sizeof(pressedKeys));
+    if (!loaded || localLink || !keys) return;
+    for (size_t i = 0; i < count; i++) {
+        if (keys[i] > 0 && keys[i] < RETROK_LAST) pressedKeys[keys[i]] = true;
+    }
 }
 
 bool reset() {

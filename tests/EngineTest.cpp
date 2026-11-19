@@ -17,7 +17,7 @@ retro_input_poll_t poll;
 retro_input_state_t input;
 retro_log_callback logger;
 bool active = false, running = false, rgb565 = false;
-bool variableUpdate = false;
+bool variableUpdate = false, typing = false;
 uint32_t ticks;
 constexpr char cheatKey[] = "fbneo-cheat-probe";
 constexpr char hiddenKey[] = "fbneo-dipswitch-secret";
@@ -97,6 +97,10 @@ void retro_run() {
     assert(input(2, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_MASK) == 0);
     assert(input(3, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_START) == 1);
     assert(input(4, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_MASK) == 0);
+    assert(input(2, RETRO_DEVICE_KEYBOARD, 0, RETROK_RETURN) == typing);
+    assert(input(0, RETRO_DEVICE_KEYBOARD, 0, RETROK_LSHIFT) == typing);
+    assert(input(2, RETRO_DEVICE_KEYBOARD, 0, RETROK_a) == 0);
+    assert(input(2, RETRO_DEVICE_KEYBOARD, 0, RETROK_LAST) == 0);
     ++ticks;
     assert(environment(RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE, &variableUpdate));
     const uint32_t pixels32[] = {0xff123456, 0xff996600};
@@ -149,7 +153,13 @@ int main() {
         assert(environment(RETRO_ENVIRONMENT_GET_VARIABLE, &chosen) && strcmp(chosen.value, enabled) == 0);
         assert(arcade::options()[0].selected == 0 && arcade::options()[0].defaultChoice == 1);
         assert(!arcade::options()[1].visible);
+        assert(!input(2, RETRO_DEVICE_KEYBOARD, 0, RETROK_RETURN));
+        const int keys[] = {RETROK_RETURN, RETROK_LSHIFT, RETROK_LAST, -1};
+        arcade::keyboard(keys, 4);
+        typing = true;
         assert(arcade::step(buttons) && variableUpdate);
+        typing = false;
+        arcade::keyboard(nullptr, 0);
         auto frame = arcade::video();
         assert(frame.width == 2 && frame.height == 1 && frame.rotation == 1 && frame.aspect == .75f);
         assert(frame.rgba[0] == (rgb16 ? 0xff0000ffu : 0xff563412u));
@@ -166,5 +176,10 @@ int main() {
         arcade::close();
         assert(!arcade::step(0) && arcade::options().empty());
     }
-    std::puts("Engine video/audio, option protocol, four-port input, reset and state tests passed.");
+    assert(arcade::open("/link.zip", "/sys", "/save", false, true) == nullptr);
+    const int key = RETROK_RETURN;
+    arcade::keyboard(&key, 1);
+    assert(arcade::step(buttons)); // Local Link never forwards computer keyboard data.
+    arcade::close();
+    std::puts("Engine video/audio, options, joypad and keyboard input, reset and state tests passed.");
 }

@@ -37,7 +37,7 @@ final class GameCatalog {
     };
     private volatile boolean closed;
     private ZipFile art;
-    private NesStore nes;
+    private ConsoleStore consoles;
 
     static final class Game {
         final String set, english, chinese, board, year, company, parent, dependency, genre;
@@ -68,20 +68,25 @@ final class GameCatalog {
                 }
             } catch (IOException ignored) { /* Show archive names when catalog is unavailable. */ }
             try {
-                for (NesStore.Entry entry : nesSets().entries()) {
-                    String name = NesStore.PREFIX + entry.set;
-                    decoded.put(name, new Game(new String[] {name, entry.title, "", "NES / Famicom", entry.year, "", "", "", ""}));
+                for (ConsoleStore.Entry entry : consoleSets().entries()) {
+                    if (entry.firmware) continue;
+                    String name = entry.driver();
+                    String parent = entry.parent.isEmpty() ? "" : entry.system.prefix + "_" + entry.parent;
+                    String[] dependencies = entry.dependencies.clone();
+                    for (int i = 0; i < dependencies.length; i++) dependencies[i] += ".zip";
+                    decoded.put(name, new Game(new String[] {name, entry.title, "", entry.system.label,
+                            entry.year, "", parent, String.join(", ", dependencies), ""}));
                 }
-            } catch (IOException ignored) { /* Existing ZIPs can still be launched. */ }
+            } catch (IOException ignored) { /* Arcade ZIPs remain available. */ }
             games = Collections.unmodifiableMap(decoded);
             main.post(() -> { if (!closed) done.run(); });
         });
     }
 
     // Called by the catalog and import workers, never from a game row or the UI thread.
-    synchronized NesStore nesSets() throws IOException {
-        if (nes == null) nes = NesStore.load(app.getAssets().open(NesStore.INDEX));
-        return nes;
+    synchronized ConsoleStore consoleSets() throws IOException {
+        if (consoles == null) consoles = ConsoleStore.load(app.getAssets().open(ConsoleStore.INDEX));
+        return consoles;
     }
 
     static String setName(String filename) { return filename.substring(0, filename.length() - 4); }
@@ -156,8 +161,9 @@ final class GameCatalog {
     }
 
     /** Give FBNeo one validated, exact-set INI until the current session closes. */
-    static File stageCheats(Context context, File system, File rom) throws IOException {
+    static File stageCheats(Context context, File system, File rom, String driver) throws IOException {
         String set = setName(rom.getName());
+        String iniName = (driver == null ? set : driver) + ".ini";
         File dir = new File(system, "fbneo/cheats");
         Files.createDirectories(dir.toPath());
         // This private directory is exclusively for these ephemeral INIs, including leftovers from process death.
@@ -167,7 +173,7 @@ final class GameCatalog {
         try { custom = new UserCheats(new File(context.getNoBackupFilesDir(), "user-cheats")).forRom(rom); }
         catch (IOException corrupt) { /* Skip an unavailable custom list, then try the bundled set. */ }
         if (custom != null) {
-            File ini = new File(dir, set + ".ini");
+            File ini = new File(dir, iniName);
             LocalFiles.atomicWrite(ini, custom);
             return ini;
         }
@@ -175,7 +181,7 @@ final class GameCatalog {
             ZipEntry source = bundle.getEntry(set + ".ini");
             if (source == null) return null;
             if (source.getSize() <= 0 || source.getSize() > 256 * 1024) throw new IOException("Invalid cheat data.");
-            File ini = new File(dir, set + ".ini");
+            File ini = new File(dir, iniName);
             Path temp = Files.createTempFile(dir.toPath(), "cheats-", ".part");
             try (InputStream in = bundle.getInputStream(source)) {
                 Files.copy(in, temp, StandardCopyOption.REPLACE_EXISTING);

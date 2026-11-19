@@ -5,7 +5,8 @@ root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 core=${1:?Pass the clean FBNeo checkout}
 copy=${2:?Pass the build directory for FBNeo Link}
 rev=2da48555c13ce5d011edf2d6ec829b7393c070af
-patch="$root/android/patches/fbneo-lockstep.patch"
+link_patch="$root/android/patches/fbneo-lockstep.patch"
+session_patch="$root/android/patches/fbneo-session.patch"
 [[ $(git -C "$core" rev-parse HEAD) == "$rev" && -z $(git -C "$core" status --porcelain) ]] || { echo "Need the clean FBNeo pin $rev" >&2; exit 1; }
 if [[ ! -d $copy/.git ]]; then
   mkdir -p "$(dirname -- "$copy")"
@@ -13,11 +14,18 @@ if [[ ! -d $copy/.git ]]; then
   git -C "$copy" checkout -q --detach "$rev"
 fi
 [[ $(git -C "$copy" rev-parse HEAD) == "$rev" ]]
+core_diff() {
+  git -C "$copy" diff --no-ext-diff --no-color -U1 HEAD | sed '/^diff --git /d; /^index /d; s/^\(@@ .* @@\).*/\1/'
+}
 if [[ -z $(git -C "$copy" status --porcelain --untracked-files=no) ]]; then
-  git -C "$copy" apply "$patch"
+  git -C "$copy" apply "$session_patch"
+elif core_diff | cmp -s - "$link_patch"; then
+  # Reuse a checkout with exactly the previously published lockstep patch.
+  git -C "$copy" apply -R "$link_patch"
+  git -C "$copy" apply "$session_patch"
 fi
-# Only the versioned lockstep patch may differ. Normalize diff headers for comparison.
-if ! git -C "$copy" diff --no-ext-diff --no-color -U1 HEAD | sed -n '/^--- a\//,$ { s/^\(@@ .* @@\).*/\1/; p; }' | cmp -s - "$patch"; then
+# Only the versioned, reproducible session patch may differ from the pinned core.
+if ! core_diff | cmp -s - "$session_patch"; then
   echo "Unexpected local changes in Link core: $copy" >&2
   exit 1
 fi

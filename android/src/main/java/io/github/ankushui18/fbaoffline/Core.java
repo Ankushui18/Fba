@@ -10,6 +10,7 @@ final class Core {
     static native String open(String rom, String system, String save, boolean patched, boolean linked);
     static native void close();
     static native int step(long input, short[] output);
+    static native void keyboard(int[] keys);
     static native boolean reset();
     static native byte[] captureState();
     static native boolean restoreState(byte[] data);

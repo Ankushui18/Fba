@@ -35,9 +35,13 @@ final class GameSession implements Runnable {
         void waiting(GameSession session, boolean waiting);
     }
 
+    private static final int[] NO_KEYS = new int[0];
     private final FrameRenderer renderer;
     private final File rom, systemDir, saveDir, cover;
     private final Context app;
+    final ConsoleSystem console;
+    volatile int[] keyboard = NO_KEYS;
+    private final GameCatalog catalog;
     final PatchStore.Entry patch;
     final GameLink link;
     final boolean continuing;
@@ -59,7 +63,7 @@ final class GameSession implements Runnable {
     volatile boolean foreground, paused, soundAllowed;
     private volatile boolean stopping;
 
-    GameSession(Context context, SurfaceHolder surface, File rom, File systemDir, File saveDir, File cover,
+    GameSession(Context context, SurfaceHolder surface, File rom, File systemDir, File saveDir, GameCatalog catalog, File cover,
                 PatchStore.Entry patch, int launchSlot, GameLink link, boolean continuing, Callbacks callbacks) {
         if (continuing && (link != null || launchSlot != 0)) throw new IllegalArgumentException("Quick Resume is a separate solo launch.");
         app = context.getApplicationContext();
@@ -70,9 +74,11 @@ final class GameSession implements Runnable {
         File privateData = app.getNoBackupFilesDir();
         states = new StateStore(new File(privateData, "states"), rom, patch == null ? null : patch.id);
         quickResume = new QuickResumeStore(privateData);
+        this.catalog = catalog;
         this.cover = patch == null ? cover : patch.preview();
         renderer = new FrameRenderer(surface);
         this.rom = rom;
+        console = ConsoleSystem.fromArchive(rom.getName());
         this.systemDir = systemDir;
         this.saveDir = patch == null ? saveDir : new File(saveDir, "ips/" + patch.id);
         this.callbacks = callbacks;
@@ -100,6 +106,7 @@ final class GameSession implements Runnable {
     }
     void resetInputs() {
         touch.set(0);
+        keyboard = NO_KEYS;
         for (int i = 0; i < 4; i++) { keys.set(i, 0); stick.set(i, 0); }
         inputReset.incrementAndGet();
     }
@@ -185,12 +192,11 @@ final class GameSession implements Runnable {
         boolean started = false;
         String error = null;
         AudioTrack audio = null;
-        File definition = null, isolated = null, nesRun = null;
-        boolean nes = NesStore.isNesArchive(rom.getName());
+        File definition = null, isolated = null, consoleRun = null;
         try {
-            if (nes && (link != null || patch != null)) throw new IOException("NES games currently support solo play without IPS variants.");
+            if (console != null && (link != null || patch != null)) throw new IOException("Console games currently support solo play without IPS variants.");
             File[] leftovers = app.getCacheDir().listFiles((dir, name) -> name.startsWith("ips-run-")
-                    || name.startsWith("link-run-") || name.startsWith("nes-run-"));
+                    || name.startsWith("link-run-") || name.startsWith("nes-run-") || name.startsWith("console-run-"));
             if (leftovers != null) for (File temp : leftovers) LocalFiles.deleteTree(temp);
             File saves = saveDir;
             if (link != null) {
@@ -209,19 +215,28 @@ final class GameSession implements Runnable {
             byte[] resumeState = continuing ? quickResume.load(states) : null;
             if (stopping) return;
             File launchRom = rom;
-            if (nes) {
-                // Preserve the library name and fingerprint; expose the path layout the NES core expects.
-                nesRun = Files.createTempDirectory(app.getCacheDir().toPath(), "nes-run-").toFile();
-                launchRom = NesStore.stage(rom, nesRun.toPath());
+            ConsoleStore.Launch staged = null;
+            boolean patched = patch != null;
+            if (console != null) {
+                // The library ZIP name and fingerprint remain stable for saves and Quick Resume.
+                consoleRun = Files.createTempDirectory(app.getCacheDir().toPath(), "console-run-").toFile();
+                staged = catalog.consoleSets().stage(rom, consoleRun.toPath());
+                launchRom = staged.rom;
+                if (staged.patchedSystem != null) {
+                    system = staged.patchedSystem;
+                    saves = new File(saves, GameCatalog.setName(rom.getName()));
+                    Files.createDirectories(saves.toPath());
+                    patched = true;
+                }
                 if (stopping) return;
             }
             if (link == null) try {
-                definition = GameCatalog.stageCheats(app, system, rom);
+                definition = GameCatalog.stageCheats(app, system, rom, staged == null ? null : staged.driver);
             } catch (IOException ignored) { /* A catalog/cache error must not block playing. */ }
             // FBNeo reloads the INI on variable changes and reset, not just during discovery.
-            error = Core.open(launchRom.getAbsolutePath(), system.getAbsolutePath(), saves.getAbsolutePath(), patch != null, link != null);
+            error = Core.open(launchRom.getAbsolutePath(), system.getAbsolutePath(), saves.getAbsolutePath(), patched, link != null);
             if (error != null) {
-                if (nes) error = "Couldn't start this NES set. Re-add a compatible .nes file or the matching FBNeo NES ZIP.";
+                if (staged != null) error += staged.firmwareHint;
                 return;
             }
             started = true;
@@ -245,6 +260,7 @@ final class GameSession implements Runnable {
             renderer.start(gpuActive);
             callbacks.ready(this);
             boolean playing = false;
+            int[] appliedKeys = NO_KEYS;
             int audioRate = 0;
             long nextFrame = 0, tick = 0, rateStart = System.nanoTime();
             int rateFrames = 0;
@@ -284,6 +300,8 @@ final class GameSession implements Runnable {
                 }
                 long period = (long) (1_000_000_000 / fps);
                 tick++;
+                int[] pressed = keyboard;
+                if (pressed != appliedKeys) { Core.keyboard(pressed); appliedKeys = pressed; }
                 int count = Core.step(pad, samples);
                 if (count < 0) { error = "The emulator stopped this game."; break; }
                 if (link != null) checkpoint = tick == 1 || tick % 120 == 0 ? Core.linkCheckpoint() : 0;
@@ -344,7 +362,7 @@ final class GameSession implements Runnable {
             if (started) Core.close();
             if (definition != null) definition.delete();
             LocalFiles.deleteTree(isolated);
-            LocalFiles.deleteTree(nesRun);
+            LocalFiles.deleteTree(consoleRun);
             if (error != null && !stopping) callbacks.failed(this, error);
         }
     }

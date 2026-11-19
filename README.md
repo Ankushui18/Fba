@@ -6,15 +6,15 @@ update of the original `com.joyemu.fbaapp`.
 
 ## Install and play
 
-[**Download FBA Arcade 0.5.5 APK**](https://github.com/Ankushui18/Fba/raw/refs/heads/arena/efa257c2-fba/artifacts/fba-arcade-0.5.5-preview-link-arm64-v8a-test.apk)
+[**Download FBA Arcade 0.5.6 APK**](https://github.com/Ankushui18/Fba/raw/refs/heads/arena/efa257c2-fba/artifacts/fba-arcade-0.5.6-preview-link-arm64-v8a-test.apk)
 — signed, 64-bit ARM, **Android 8 or later**. **Add games** now accepts
-[supported NES cartridge files](#nes-and-famicom) as well as FBNeo ZIPs. The same
+[matching games from 19 FBNeo console and computer systems](docs/CONSOLE_SUPPORT.md) as well as FBNeo ZIPs. The same
 APK includes offline solo play, [local Wi-Fi/Bluetooth multiplayer](docs/LINK_PLAY.md),
 [Quick Resume](#quick-resume), and [Backup & restore](#back-up-saves-and-settings).
 There is no separate Offline build.
 
-Download the `.apk`, not the [SHA-256 checksum](artifacts/FBA-Arcade-0.5.5-SHA256SUMS.txt).
-**Install over 0.5.4, 0.5.3, 0.5.2 (Link or the earlier Offline flavor), or 0.5.1
+Download the `.apk`, not the [SHA-256 checksum](artifacts/FBA-Arcade-0.5.6-SHA256SUMS.txt).
+**Install over 0.5.5, 0.5.4, 0.5.3, 0.5.2 (Link or the earlier Offline flavor), or 0.5.1
 Recovery Preview without uninstalling.** The app ID and signer match, so the
 library, saves and settings stay in place.
 
@@ -32,25 +32,20 @@ for the restored features and remaining compatibility gaps.
    Alpha archive with the same name may be a different revision. To import from
    a folder, use **Browse folder** on the welcome screen or **Settings → Browse
    ROM folder**. The Android picker can remember that folder for next time.
-2. Tap a game, then **Coin → Start** for arcade or **Start** for NES. Use touch,
+2. Tap a game, then **Coin → Start** for arcade or the console controls (usually **Start**). Use touch,
    an Android gamepad, or a keyboard. Keyboard defaults: arrows for movement,
    X/Z/S/A/W/Q for arcade A–F, Space for Coin/Select, Enter for Start and Escape
-   for Pause.
+   for Pause. MSX1/ZX Spectrum forward physical keyboard keys to the computer.
 
-### NES and Famicom
+### Consoles and computers
 
-Pick a `.nes` file directly. No renaming, manual ZIP packing or separate NES
-folder is needed. FBA Arcade checks the iNES header, file size and CRC-32
-against the [pinned NES DAT](https://github.com/libretro/FBNeo/blob/2da48555c13ce5d011edf2d6ec829b7393c070af/dats/FinalBurn%20Neo%20%28ClrMame%20Pro%20XML%2C%20NES%20Games%20only%29.dat).
-For example, **Super Mario Bros. (World)** is `smb` (40,976 bytes, CRC-32
-`3337ec46`). The matching FBNeo `smb.zip` or `nes_smb.zip` works too. Re-add a
-bare NES ZIP imported with an older app so it is identified as NES.
-
-A different dump, ROM hack or header may not match this FBNeo revision even
-if another emulator plays it. Only matching cartridge files are supported, not
-Famicom Disk System or other console file formats through this importer. NES
-runs in solo mode with regular saves and optional Quick Resume. Link and IPS
-profiles are not enabled for NES. No games are bundled.
+**Add games** detects matching NES, SNES, Genesis / Mega Drive, GBA and other
+supported FBNeo cartridges, disks and tapes. For a list of all 19 systems,
+raw formats, example checksums and any BIOS ZIPs, see [Console and computer
+games](docs/CONSOLE_SUPPORT.md). No system picker or separate APK is required.
+Games still need to match the bundled core's ROM sets; this does not make every
+arbitrary dump playable. CD images (Neo Geo CD, PCE CD and Sega CD) are not
+imported by this build. Console games run solo; arcade Link is unchanged.
 
 ## Game and library tools
 
@@ -161,9 +156,9 @@ filtering, and screenshots and save previews still use the raw core frame.
 The Android picker gives read access to the files or folder you select. The ROM
 browser remembers one read-only folder grant where supported; **Forget** releases
 it without deleting any copies. ZIPs, notes, skins and patches are copied to
-private storage and stay on the device. Limits: 64 ZIPs per file selection, 256
-items per folder listing, and 512 MiB per arcade ZIP (NES: 10 MiB per `.nes`,
-32 MiB per playable ZIP). Uninstalling deletes this install's
+private storage and stay on the device. Limits: 64 files per selection, 256 items per folder listing,
+512 MiB per arcade ZIP, 80 MiB per console ZIP and 64 MiB per loose console
+file (plus an optional 512-byte SNES copier header). Uninstalling deletes this install's
 data. Export a backup ZIP and any screenshots you want to keep first. Manual
 backup/restore uses the Android document picker; it doesn't add permissions,
 a cloud account or automatic uploads.
@@ -184,25 +179,24 @@ export ANDROID_SDK_ROOT=/path/to/android-sdk
 export ANDROID_NDK_HOME="$ANDROID_SDK_ROOT/ndk/28.2.13676358"
 ./tools/build-apk.sh
 ./tools/test.sh
-./tools/verify-apk.sh artifacts/fba-arcade-0.5.5-link-arm64-v8a-test.apk
+./tools/verify-apk.sh artifacts/fba-arcade-0.5.6-link-arm64-v8a-test.apk
 ```
 
 No Gradle/Maven dependencies or legacy APK files are needed. `tools/build-core.sh`
 fetches and checks the [FBNeo Libretro pin `2da48555`](https://github.com/libretro/FBNeo/tree/2da48555c13ce5d011edf2d6ec829b7393c070af).
 Set `FBNEO_SOURCE` to a clean checkout of that pin to build without fetching the
-core. The build always includes Link and applies the recorded deterministic
-startup patch in a separate source directory. `ANDROID_PLATFORM`,
+core. The build always includes Link and applies the [recorded session patch](android/patches/fbneo-session.patch)
+in a separate source directory. `ANDROID_PLATFORM`,
 `ANDROID_BUILD_TOOLS`, `JOBS` and `APK_OUTPUT` are optional build overrides.
 `ANDROID_ABIS=x86_64` builds an x86-64 APK. To audit an older permission-free
 Offline APK, use `./tools/verify-apk.sh OLD.apk --legacy-offline`.
 See [Android acceptance checks](docs/ANDROID_SMOKE.md).
 
-For a real-core Linux smoke test, build the pinned core with
-`make -C "$FBNEO_SOURCE/src/burner/libretro" -j2 platform=unix` and run
-`tools/smoke-core.sh "$FBNEO_SOURCE/src/burner/libretro/fbneo_libretro.so"`.
-This uses an ephemeral synthetic board probe, not the original game ROM. An
-optional second argument is a compatible local ZIP to smoke test too. For the
-separate two-core protocol test, see [Link setup](docs/LINK_PLAY.md#host-test).
+For real-core Linux smoke tests, build the patched host core as shown in
+[Link setup](docs/LINK_PLAY.md#host-test), then run `tools/smoke-core.sh` and
+`tools/smoke-console.sh` with that `.so`. They use temporary synthetic fixtures,
+not the original games. A compatible local arcade ZIP or the verified NES
+alternate dump can optionally be tested by the respective script.
 
 **Signing:** By default the scripts use a local test key under `.cache/signing/`
 (never checked in) and the ID `io.github.ankushui18.fbaarcade.test`. Keep the

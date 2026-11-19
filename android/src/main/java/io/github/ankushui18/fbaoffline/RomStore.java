@@ -48,11 +48,11 @@ final class RomStore {
 
     interface ZipName { String resolve(String name, ZipFile validated) throws IOException; }
 
-    static void importZip(Path directory, String sourceName, InputStream in, ZipName resolver) throws IOException {
-        importZip(directory, sourceName, in, MAX_BYTES, resolver);
+    static String importZip(Path directory, String sourceName, InputStream in, ZipName resolver) throws IOException {
+        return importZip(directory, sourceName, in, MAX_BYTES, resolver);
     }
 
-    private static void importZip(Path directory, String sourceName, InputStream in, long limit, ZipName resolver) throws IOException {
+    private static String importZip(Path directory, String sourceName, InputStream in, long limit, ZipName resolver) throws IOException {
         String name = archiveName(sourceName);
         Files.createDirectories(directory);
         Path temp = Files.createTempFile(directory, ".import-", ".part");
@@ -71,6 +71,7 @@ final class RomStore {
             name = validateZip(temp, name, resolver);
             checkInterrupted();
             Files.move(temp, directory.resolve(name), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            return name;
         } finally {
             Files.deleteIfExists(temp);
         }
