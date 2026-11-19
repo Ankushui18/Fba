@@ -1,10 +1,15 @@
-FBA Arcade uses the FinalBurn Neo Libretro port.
+FBA Arcade is an independent Android frontend using the FinalBurn Neo Libretro port.
+Free for personal, non-commercial play. Not for sale. No donation solicitation for this FBNeo-based project.
+This is not an official FBNeo, Libretro, or FBA4droid release. We do not own the upstream code or third-party assets.
+
 Core source: https://github.com/libretro/FBNeo/tree/2da48555c13ce5d011edf2d6ec829b7393c070af
 Version: 1.0.0.03 (source snapshot of 2026-11-18)
 FBNeo project: https://github.com/finalburnneo/FBNeo
-Android frontend and build scripts: https://github.com/Ankushui18/Fba/tree/arena/efa257c2-fba
-See FBNeo-LICENSE.txt and licenses/ for the bundled notices. Non-commercial use only.
+Android frontend, source changes, and build scripts: https://github.com/Ankushui18/Fba/tree/arena/efa257c2-fba
+See LICENSE.md in the frontend repository for attribution and corresponding source links.
+See FBNeo-LICENSE.txt for the full, verbatim license and licenses/ for the other bundled notices.
+
 HQx is a separate, replaceable LGPL-2.1-or-later library (Maxim Stepin, Cameron Zemek).
 HQx source with the Android cache changes: android/third_party/hqx in the frontend source tree.
 HQx upstream: https://github.com/grom358/hqx/tree/a1c7d415f4bb7b947c4c2e47faf220b0148f4bac
-No game ROMs or BIOS archives are included. This is not an official FBNeo release.
+No game ROMs or original BIOS archives are included. Use only files you have the right to use.

@@ -4,3 +4,5 @@ android/src/main/assets/nes-sets.tsv text eol=lf linguist-generated=true
 android/src/main/assets/console-sets.tsv text eol=lf linguist-generated=true
 android/third_party/hqx/* -whitespace
 android/patches/*.patch whitespace=-space-before-tab
+# Keep the upstream license byte-for-byte, including its original encoding/whitespace.
+LICENSES/FBNeo-LICENSE.txt -text -whitespace

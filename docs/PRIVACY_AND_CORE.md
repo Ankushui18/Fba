@@ -1,4 +1,9 @@
-# Legacy APK comparison and FBA Arcade audit
+# FBA Arcade privacy, asset provenance and core audit
+
+See [licenses and corresponding source](../LICENSE.md) for credits, the original
+FBNeo terms and the exact sources used for the Preview APK. The legacy APK and
+ZIP described below are historical audit inputs, not supported downloads or
+build dependencies. They are no longer tracked in the active Preview source tree.
 
 ## What the original contains
 
@@ -50,11 +55,11 @@ It enables deterministic time and random seeds before Link startup, refreshes
 the current driver's control descriptors after switching games, and prevents
 cleanup of an uninitialized driver on a missing-ROM or BIOS error. The patch
 and core licenses are bundled in the APK.
-Reproduce the comparison:
+If you have a local copy you have the right to inspect, reproduce the comparison:
 
 ```sh
 # With the two clean checkouts at the above commits:
-python3 tools/compare_legacy.py fba4droid_18644.apk /path/to/FBNeo /path/to/FBNeo-libretro
+python3 tools/compare_legacy.py /path/to/local/fba4droid_18644.apk /path/to/FBNeo /path/to/FBNeo-libretro
 ```
 
 ## What FBA Arcade reuses
@@ -71,12 +76,14 @@ python3 tools/compare_legacy.py fba4droid_18644.apk /path/to/FBNeo /path/to/FBNe
 `tools/import_legacy_art.py` records each PNG's source path and validates the
 APK hash. `tools/prepare_game_catalog.py` pins both the original APK and the
 FBNeo arcade DAT by SHA-256. It only exports bounded PNGs, TSV metadata and a
-constrained native cheat grammar. For regeneration, install Pillow 13.0.0 in
-a Python virtual environment and run:
+constrained native cheat grammar. These steps are optional and are not part of
+building the APK. Regenerate legacy assets only from a local copy you may use,
+and redistribute them only if you have the required rights. With Pillow 13.0.0
+in a Python virtual environment, run:
 
 ```sh
-python tools/import_legacy_art.py
-python tools/prepare_game_catalog.py /path/to/pinned/FBNeo-libretro
+python tools/import_legacy_art.py /path/to/local/fba4droid_18644.apk
+python tools/prepare_game_catalog.py /path/to/pinned/FBNeo-libretro --apk /path/to/local/fba4droid_18644.apk
 python tools/prepare_rom_targets.py /path/to/pinned/FBNeo-libretro
 python tools/make-console-index.py /path/to/pinned/FBNeo-libretro android/src/main/assets/console-sets.tsv
 ```

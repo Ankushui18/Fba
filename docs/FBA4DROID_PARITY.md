@@ -3,8 +3,10 @@
 This compares the supplied `fba4droid_18644.apk` (SHA-256
 `9099a973c4bab3c8634583e5d3630f8f0642d7d3c993e698e6ea64120f36f775`,
 `com.joyemu.fbaapp` 1.77/20200306) with FBA Arcade Recovery 0.4.0 and 0.5.0.
-The old APK was inspected, not installed. Its help is older than the APK, so
-help alone isn't proof that a legacy file or behavior works on an Android device.
+The old APK was inspected, not installed. It is a local audit input, not a
+project download. Its help is older than the APK, so help alone isn't proof
+that a legacy file or behavior works on an Android device. For third-party
+rights and the Preview's source, see [licenses and attribution](../LICENSE.md).
 
 | Feature | Evidence in the supplied APK | Recovery 0.4.0 | Recovery 0.5.0 |
 |---|---|---|---|

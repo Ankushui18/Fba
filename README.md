@@ -1,31 +1,33 @@
-# FBA Arcade
+# FBA Arcade — FinalBurn Neo for Android
 
-An independent Android frontend for FinalBurn Neo, with the supplied
-FBA4droid's game art and original controller skins. It is not an
-update of the original `com.joyemu.fbaapp`.
+FBA Arcade is an unofficial **Android arcade and retro console emulator
+frontend** powered by FinalBurn Neo (FBNeo). Play compatible arcade ZIP sets
+offline, add supported `.nes` cartridges directly, or import matching games
+for SNES, Sega Genesis / Mega Drive, GBA and other supported systems.
+
+> **Free for personal, non-commercial play. Not for sale.** This is not an
+> official FBNeo release. We do not own the upstream emulator code or the
+> third-party games and assets. The Preview APK includes no game ROMs or
+> original BIOS archives. See [licenses, credits and corresponding source](LICENSE.md).
+
+[Download APK](#install-and-play) · [Supported systems and formats](docs/CONSOLE_SUPPORT.md) · [Local multiplayer setup](docs/LINK_PLAY.md) · [Report an issue](#get-help)
 
 ## Install and play
 
-[**Download FBA Arcade 0.5.8 APK**](https://github.com/Ankushui18/Fba/raw/refs/heads/arena/efa257c2-fba/artifacts/fba-arcade-0.5.8-preview-link-arm64-v8a-test.apk)
-— signed, 64-bit ARM, **Android 8 or later**. **Add games** accepts more `.nes`
-cartridge types directly. **Import results** explains any file that wasn't added
-or shows its library title if it is already listed.
-The same APK handles FBNeo ZIPs, [19 console/computer systems](docs/CONSOLE_SUPPORT.md), offline solo play, [local Wi-Fi/Bluetooth multiplayer](docs/LINK_PLAY.md),
-[Quick Resume](#quick-resume), and [Backup & restore](#back-up-saves-and-settings).
-There is no separate Offline build.
+[**Download FBA Arcade 0.5.8 Preview APK**](https://github.com/Ankushui18/Fba/raw/795f9695b65336d84d47838c306f9be7640d84c5/artifacts/fba-arcade-0.5.8-preview-link-arm64-v8a-test.apk)
+— signed, 64-bit ARM, **Android 8 or later**. One APK includes offline solo play,
+local Wi-Fi/Bluetooth arcade multiplayer, [Quick Resume](#quick-resume), and
+[Backup & restore](#back-up-saves-and-settings). There is no separate Offline build.
 
 Download the `.apk`, not the [SHA-256 checksum](artifacts/FBA-Arcade-0.5.8-SHA256SUMS.txt).
 **Install over Recovery Preview 0.5.1–0.5.7 without uninstalling.** The app ID
 and signer match, so the library, saves and settings stay in place. Use **Add
 games** again for files that were previously skipped.
 
-The separately signed original **FBA Arcade Recovery** and **FBA4droid** are not
-updated by this APK. Leave them installed if you need their data. The backup
-feature only reads data from the FBA Arcade install you're using.
-
-The previous [0.4.0 Recovery prerelease](https://github.com/Ankushui18/Fba/releases/tag/v0.4.0-recovery)
-is unchanged. See the [feature-by-feature 1.77 comparison](docs/FBA4DROID_PARITY.md)
-for the restored features and remaining compatibility gaps.
+This is not an update for the original **FBA Arcade Recovery** or **FBA4droid**
+(`com.joyemu.fbaapp`). Leave those installed if you need their data. The backup
+feature only reads data from the FBA Arcade install you're using. See the
+[FBA4droid 1.77 comparison](docs/FBA4DROID_PARITY.md) for compatibility differences.
 
 1. Tap **Add games** on the welcome screen (or **+ Add** once games are in your
    library). Choose your `.nes` or other game file. In Android's **Recent**
@@ -45,10 +47,12 @@ for the restored features and remaining compatibility gaps.
 Use **Add games** for `.nes` files: known FBNeo dumps keep their existing
 library entries, and ordinary iNES / NES 2.0 cartridges with [supported
 mappers](docs/CONSOLE_SUPPORT.md#direct-nes-files) don't need a matching ZIP.
-Other systems (SNES, Genesis / Mega Drive, GBA and more) still require a matching
-FBNeo dump or set ZIP. See [formats and BIOS notes](docs/CONSOLE_SUPPORT.md).
+This build covers [19 console and computer systems](docs/CONSOLE_SUPPORT.md);
+other systems such as SNES, Genesis / Mega Drive and GBA require a matching
+FBNeo dump or set ZIP. Supply only ROMs and BIOS files you have the right to use.
+If a selected file doesn't appear, check **Import results** for the reason or the
+name of the existing entry. Console games run solo; Link is for arcade games.
 CD images (Neo Geo CD, PCE CD and Sega CD) are not imported by this build.
-Console games run solo; arcade Link is unchanged.
 
 ## Game and library tools
 
@@ -216,12 +220,20 @@ your own signer and the original frontend ID `io.github.ankushui18.fbaoffline`;
 the script prompts for the password locally. A new key cannot update an
 existing install.
 
+## Get help
+
+Check [supported formats and BIOS notes](docs/CONSOLE_SUPPORT.md), then
+[report an issue](https://github.com/Ankushui18/Fba/issues/new) with the FBA Arcade
+version, Android version and device model. For a game that didn't add, include
+its filename and the **Import results** reason. Do not attach ROMs, BIOS files
+or backups. For an attribution concern, include the affected file or asset path.
+
 ## Credits and license
 
-This is not an official FBNeo or FBA4droid release. The pinned source, FBNeo's
-non-commercial license and library notices are included in the APK. HQx is a
-separate LGPL-2.1-or-later library; [its source and replacement instructions](android/third_party/hqx/README.md)
-are in this repository. Preserve notices and make corresponding sources
-available when redistributing. The supplied artwork and asset data remain the
-property of their owners. Verify your rights before redistributing. Do not sell
-the build or distribute unauthorized ROM images.
+Thanks to Team FBNeo, the original Final Burn and MAME contributors, Libretro,
+and the authors of the bundled libraries. The FBNeo-based build is for
+non-commercial play, not for sale or donation solicitation. [Licenses, credits
+and corresponding source](LICENSE.md) lists the exact core revision, published
+changes and third-party asset provenance. The APK carries the full FBNeo license,
+patch and library notices; the [verbatim FBNeo text](LICENSES/FBNeo-LICENSE.txt)
+is also available here. Separate components such as HQx retain their own licenses.

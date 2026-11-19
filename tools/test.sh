@@ -8,6 +8,8 @@ if [[ ! -f $header/libretro.h ]]; then
   echo "Fetch the pinned FBNeo source with tools/build-core.sh first or set FBNEO_SOURCE." >&2
   exit 1
 fi
+cmp "$root/LICENSES/FBNeo-LICENSE.txt" "$core/src/license.txt"
+echo "FBNeo license matches the pinned upstream text byte for byte."
 work=$(mktemp -d)
 trap 'rm -rf -- "$work"' EXIT
 javac="${JAVA_HOME:+$JAVA_HOME/bin/}javac"

@@ -25,7 +25,9 @@ PACKAGES = {
 CATALOG_ASSETS = {"assets/game-art.zip", "assets/game-catalog.tsv", "assets/game-cheats.zip", "assets/ips-targets.zip"}
 NES_INDEX_ASSET = "assets/nes-sets.tsv"
 CONSOLE_INDEX_ASSET = "assets/console-sets.tsv"
-CATALOG_DIR = Path(__file__).resolve().parents[1] / "android/src/main"
+ROOT = Path(__file__).resolve().parents[1]
+CATALOG_DIR = ROOT / "android/src/main"
+FBNEO_LICENSE = ROOT / "LICENSES/FBNeo-LICENSE.txt"
 NATIVE = re.compile(r"lib/(arm64-v8a|x86_64)/lib(retro|offlinefb|hqx)\.so\Z")
 ASSETS = {
     "assets/CORE-SOURCE.txt", "assets/FBNeo-LICENSE.txt", *CATALOG_ASSETS,
@@ -207,6 +209,8 @@ def main(aapt2, apk, link=False):
             require(patch in entries and z.read(patch) == (CATALOG_DIR.parent.parent / "patches" / source).read_bytes(),
                     "FBNeo patch differs from source")
         require(mandatory <= entries, f"missing files: {mandatory - entries}")
+        require(z.read("assets/FBNeo-LICENSE.txt") == FBNEO_LICENSE.read_bytes(),
+                "FBNeo license must be the full, verbatim text for the pinned core")
         libraries = {}
         for info in z.infolist():
             name = info.filename
@@ -231,7 +235,7 @@ def main(aapt2, apk, link=False):
         require(libraries and all(libs == {"retro", "offlinefb", "hqx"} for libs in libraries.values()), "incomplete native libraries")
         inspect_dex(z.read("classes.dex"), link)
     scope = "local link permission/API allowlist" if link else "zero permissions"
-    print(f"APK checks passed: {scope}, launcher only, approved payload, and 16 KiB ELF alignment.")
+    print(f"APK checks passed: {scope}, launcher only, approved payload, verbatim FBNeo license, and 16 KiB ELF alignment.")
     print("Native ABIs: " + ", ".join(sorted(libraries)))
 
 
