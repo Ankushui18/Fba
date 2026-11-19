@@ -1,12 +1,12 @@
-# FBA Arcade 0.5.7 — Android acceptance checks
+# FBA Arcade 0.5.8 — Android acceptance checks
 
 The signed ARM64 APK passed build and host verification. No Android device
 was connected. These checks verify Android UI/SAF, input, audio, and hardware
 connectivity on a phone or tablet. Use legally obtained cartridges or ROM sets
 for the pinned FBNeo revision, including any required BIOS/parent dependencies.
 
-1. **Update in place.** Install the [0.5.7 APK](../README.md#install-and-play)
-   over 0.5.6, 0.5.5, 0.5.4, 0.5.3, 0.5.2 or 0.5.1 Recovery Preview. Do not uninstall first. Check that
+1. **Update in place.** Install the [0.5.8 APK](../README.md#install-and-play)
+   over 0.5.1–0.5.7 Recovery Preview. Do not uninstall first. Check that
    ROMs, saved folder access, Favorites, list/grid, Quick Resume and a manual
    save still work. Any original Recovery or FBA4droid install should be
    untouched. Start a solo game without a network connection or a Bluetooth/Local
@@ -35,9 +35,16 @@ for the pinned FBNeo revision, including any required BIOS/parent dependencies.
    DAT (e.g. a homebrew NROM cartridge). From Add games, browse directly to the
    file's Downloads or storage folder, including a provider that reports a
    generic file type. Check it appears by title and runs without a ZIP or BIOS.
-   Re-add under another filename and check for one row and working saves. A
-   renamed text file and a truncated `.nes` should be rejected with specific
-   guidance. In a name collision (e.g. NES and arcade
+   Re-add under another filename and check for one row, working saves, and
+   **Already listed as** with the library title. Add a supported MMC2 or MMC4
+   cartridge and a `.nes` with a small uniform filler tail; check they appear
+   and play, and re-adding without the tail doesn't duplicate the entry. Try a
+   truncated `.nes` alone; the **Import results** dialog should show the file
+   and explain that it is incomplete. In a mixed selection with a valid game,
+   a renamed text file and a different unsupported NES mapper, check that the
+   report names each skipped file and its reason, and the valid game appears
+   after dismissing the dialog. Repeat with **Browse folder**. In a name
+   collision (e.g. NES and arcade
    `1942.zip`), both matching sets should be listed separately. Check that the
    arcade game's controls, saves and Link access did not change. Add a mixed
    selection with matching `.sfc` (SNES), `.md`/`.bin` (Genesis), `.gba` and `.fds`
@@ -116,15 +123,16 @@ for the pinned FBNeo revision, including any required BIOS/parent dependencies.
     The Quick Resume checkpoint and its toggle must remain local. Cancel a
     picker/confirmation and try a plain ROM ZIP and a truncated copy of the backup;
     none should change the current slots or settings.
-11. **Local multiplayer, two phones.** Install the same 0.5.7 APK on both.
+11. **Local multiplayer, two phones.** Install the same 0.5.8 APK on both.
     See [Link setup](LINK_PLAY.md). Test Wi-Fi P1/P2 and paired Bluetooth P1/P2.
     Check separate inputs, paired pause/resume and safe exit. Try different
-    filters on the two phones. Check a mixed 0.5.6/0.5.7 pair (same protocol), a
+    filters on the two phones. Check a mixed 0.5.7/0.5.8 pair (same protocol), a
     rejected 0.4.0 peer, wrong room code, different ZIP revision, permission
     denial, cancellation and network loss or app background. Check that the solo
     Quick Resume checkpoint and other solo data stay unchanged after a Link match.
 12. **If possible:** repeat on a 16 KiB page-size phone.
 
-Report phone model/Android version, APK flavor, ROM set name (not ROM contents),
-active filter, both FPS values, and whether audio stutters along with video.
-There is no automatic error reporting.
+For an import problem, report the filename and its **Import results** reason,
+not the ROM. For a playback problem, include phone model/Android version, APK
+flavor, active filter, both FPS values, and whether audio stutters along with
+video. There is no automatic error reporting.

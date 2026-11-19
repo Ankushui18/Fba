@@ -171,6 +171,13 @@ final class ConsoleStore {
                 probe = Probe.scan(in, out, snes ? MAX_RAW + COPIER_HEADER : MAX_RAW, snes, false);
             }
             List<Entry> matches = rawMatches(extension, probe.signature(), probe.magic, source);
+            if (matches.isEmpty() && extension.equals("nes") && probe.magic == 0x4e45531a && LooseNes.trimPadding(source, probe.size)) {
+                // Re-check the exact trimmed bytes so a known set keeps the same name and saves.
+                try (InputStream rom = Files.newInputStream(source)) {
+                    probe = Probe.scan(rom, null, MAX_RAW, false, false);
+                }
+                matches = rawMatches(extension, probe.signature(), probe.magic, source);
+            }
             int offset = 0;
             long signature = probe.signature();
             if (matches.isEmpty() && snes && probe.size > COPIER_HEADER && probe.size % 1024 == COPIER_HEADER) {

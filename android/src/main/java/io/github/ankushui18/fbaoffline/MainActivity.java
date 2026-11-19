@@ -504,39 +504,38 @@ public final class MainActivity extends Activity implements GameSession.Callback
         if (importing || game != null || chosen.isEmpty()) return;
         importing = true;
         showLibrary("Checking and copying " + chosen.size() + (chosen.size() == 1 ? " file…" : " files…"));
-        importer.execute(() -> importGames(chosen, note));
+        boolean chinese = library.chineseNames();
+        importer.execute(() -> importGames(chosen, note, chinese));
     }
 
-    private void importGames(List<Uri> chosen, String folderNote) {
-        int added = 0, bios = 0;
-        String why = null;
+    private void importGames(List<Uri> chosen, String folderNote, boolean chinese) {
+        ImportReport report = new ImportReport(roms);
         ConsoleStore index = null;
         try { index = catalog.consoleSets(); }
         catch (IOException unavailable) { /* An unavailable index must not block arcade ZIP imports. */ }
-        for (Uri uri : chosen) {
+        for (int i = 0; i < chosen.size(); i++) {
             if (Thread.currentThread().isInterrupted()) return;
+            Uri uri = chosen.get(i);
+            String name = null, archive = null, error = null;
             try {
                 if (!"content".equals(uri.getScheme())) throw new ConsoleStore.Mismatch("Choose a file through the Android picker.");
-                String name = documentName(uri);
+                name = documentName(uri);
                 try (InputStream in = getContentResolver().openInputStream(uri)) {
-                    String saved = GameImport.add(roms.toPath(), name, in, index);
-                    if (ConsoleStore.isFirmware(saved)) bios++;
-                    else catalog.rememberCartridgeName(saved, name);
+                    archive = GameImport.add(roms.toPath(), name, in, index);
                 }
-                added++;
-            } catch (ConsoleStore.Mismatch mismatch) {
-                if (why == null) why = mismatch.getMessage();
-            } catch (java.util.zip.ZipException malformed) {
-                if (why == null) why = "This file isn't a readable game ZIP.";
             } catch (IOException | RuntimeException failure) {
-                if (why == null) why = "Couldn't read or copy the file. Check storage or choose a local copy from Downloads.";
+                error = GameImport.failureMessage(failure);
+            }
+            String sourceLabel = name == null ? "Selected file " + (i + 1) : name;
+            if (archive == null) {
+                report.notAdded(sourceLabel, error);
+            } else {
+                // A provider close error does not undo an already committed private copy.
+                catalog.rememberCartridgeName(archive, name);
+                report.saved(sourceLabel, archive, catalog.game(new File(roms, archive)).title(chinese));
             }
         }
-        String summary = added == 0 ? "No files added."
-                : added < chosen.size() ? "Added " + added + " of " + chosen.size() + " files."
-                : added == bios ? (bios == 1 ? "BIOS added." : bios + " BIOS files added.") + " Add or launch a game."
-                : (added == 1 ? "Game added." : added + " files added.") + " Tap a game to play.";
-        finishImport(added > bios, summary + (why == null ? "" : " " + why) + (folderNote == null ? "" : " " + folderNote));
+        finishImport(report, folderNote);
     }
 
     private String documentName(Uri uri) {
@@ -552,12 +551,18 @@ public final class MainActivity extends Activity implements GameSession.Callback
         return ConsoleSystem.isRaw(name) || ConsoleSystem.extension(name).equals("zip") ? name : null;
     }
 
-    private void finishImport(boolean added, String summary) {
+    private void finishImport(ImportReport report, String folderNote) {
         runOnUiThread(() -> {
             if (isFinishing() || isDestroyed()) return;
             importing = false;
-            if (added) library.revealGames();
-            showLibrary(summary);
+            if (report.hasGames()) library.revealGames();
+            showLibrary(report.summary() + (folderNote == null ? "" : " · " + folderNote));
+            if (report.hasDetails()) {
+                AlertDialog details = new AlertDialog.Builder(this).setTitle("Import results")
+                        .setMessage(report.details()).setPositiveButton("OK", null).show();
+                TextView message = details.findViewById(android.R.id.message);
+                if (message != null) message.setTextIsSelectable(true);
+            }
         });
     }
 

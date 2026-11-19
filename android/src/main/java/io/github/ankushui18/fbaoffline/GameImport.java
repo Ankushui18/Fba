@@ -4,10 +4,19 @@ import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Path;
+import java.util.zip.ZipException;
 
 /** Shared by the file picker and folder browser. The selected provider's MIME type isn't a ROM format. */
 final class GameImport {
     private GameImport() {}
+
+    /** Keep provider/OS diagnostics (possibly private paths and identifiers) out of the UI. */
+    static String failureMessage(Exception error) {
+        if (error instanceof ConsoleStore.Mismatch || error instanceof RomStore.InvalidArchive) return error.getMessage();
+        if (error instanceof ZipException) return "This file isn't a readable game ZIP.";
+        if (error instanceof SecurityException) return "Android didn't grant read access. Pick the file again or copy it to Downloads first.";
+        return "Couldn't read or copy the file. Check storage or choose a local copy from Downloads.";
+    }
 
     // The caller owns the input stream and the document grant.
     static String add(Path library, String displayName, InputStream in, ConsoleStore sets) throws IOException {
@@ -15,7 +24,7 @@ final class GameImport {
         String ext = ConsoleSystem.extension(name);
         if (ext.equals("fba")) throw new ConsoleStore.Mismatch("Old .fba cache files aren't supported. Choose the matching FBNeo ZIP instead.");
         if (ConsoleSystem.isDisc(name)) throw new ConsoleStore.Mismatch("CD disc images aren't supported by this app build yet.");
-        if (in == null) throw new ConsoleStore.Mismatch("Couldn't read the selected file.");
+        if (in == null) throw new ConsoleStore.Mismatch("The Android picker didn't provide the file contents. Pick it again or copy it to Downloads first.");
         if (ext.equals("zip")) return RomStore.importZip(library, name, in, sets == null ? null : sets::archiveTarget);
 
         // Some providers hide the suffix or return a generic .bin/.rom display name.

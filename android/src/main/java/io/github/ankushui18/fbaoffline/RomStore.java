@@ -25,10 +25,15 @@ final class RomStore {
 
     private RomStore() {}
 
+    /** Validation messages for a user-selected ZIP, never provider paths or OS errors. */
+    static final class InvalidArchive extends IOException {
+        InvalidArchive(String message) { super(message); }
+    }
+
     static String archiveName(String displayName) throws IOException {
         String name = displayName == null ? "" : displayName.toLowerCase(Locale.ROOT);
         if (!NAME.matcher(name).matches()) {
-            throw new IOException("Choose a .zip with its original FBNeo set name (letters, numbers, hyphens or underscores).");
+            throw new InvalidArchive("Choose a .zip with its original FBNeo set name (letters, numbers, hyphens or underscores).");
         }
         return name;
     }
@@ -64,7 +69,7 @@ final class RomStore {
                 while ((read = in.read(buffer)) != -1) {
                     checkInterrupted();
                     written += read;
-                    if (written > limit) throw new IOException("ZIP exceeds the import size limit.");
+                    if (written > limit) throw new InvalidArchive("ZIP exceeds the import size limit.");
                     out.write(buffer, 0, read);
                 }
             }
@@ -83,7 +88,7 @@ final class RomStore {
 
     private static String validateZip(Path path, String archive, ZipName resolver) throws IOException {
         try (ZipFile zip = new ZipFile(path.toFile())) {
-            if (zip.size() == 0 || zip.size() > MAX_ENTRIES) throw new IOException("Unsupported ZIP entry count.");
+            if (zip.size() == 0 || zip.size() > MAX_ENTRIES) throw new InvalidArchive("Unsupported ZIP entry count.");
             long total = 0;
             boolean hasFiles = false;
             Set<String> seen = new HashSet<>();
@@ -94,21 +99,21 @@ final class RomStore {
                 String name = entry.getName();
                 if (name.length() > 512 || name.startsWith("/") || name.indexOf('\\') >= 0 ||
                         name.indexOf(':') >= 0 || name.indexOf('\0') >= 0 || !seen.add(name.toLowerCase(Locale.ROOT))) {
-                    throw new IOException("ZIP has an invalid or duplicate entry name.");
+                    throw new InvalidArchive("ZIP has an invalid or duplicate entry name.");
                 }
                 for (String part : name.split("/")) {
-                    if (part.equals("..") || part.equals(".")) throw new IOException("ZIP has an invalid entry path.");
+                    if (part.equals("..") || part.equals(".")) throw new InvalidArchive("ZIP has an invalid entry path.");
                 }
                 if (entry.isDirectory()) continue;
                 if (entry.getMethod() != ZipEntry.STORED && entry.getMethod() != ZipEntry.DEFLATED) {
-                    throw new IOException("Unsupported ZIP compression.");
+                    throw new InvalidArchive("Unsupported ZIP compression.");
                 }
                 long size = entry.getSize();
-                if (size < 0 || size > MAX_EXPANDED - total) throw new IOException("ZIP is too large after decompression.");
+                if (size < 0 || size > MAX_EXPANDED - total) throw new InvalidArchive("ZIP is too large after decompression.");
                 total += size;
                 hasFiles = true;
             }
-            if (!hasFiles) throw new IOException("ZIP has no ROM files.");
+            if (!hasFiles) throw new InvalidArchive("ZIP has no ROM files.");
             return resolver == null ? archive : archiveName(resolver.resolve(archive, zip));
         }
     }

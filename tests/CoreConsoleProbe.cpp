@@ -68,5 +68,5 @@ int main(int argc, char **argv) {
             assert(battery && battery.get() == 0x5a); // Actual write from the cartridge test program.
         }
     }
-    assert(passed >= 16);
+    assert(passed >= 24);
 }

@@ -6,17 +6,18 @@ update of the original `com.joyemu.fbaapp`.
 
 ## Install and play
 
-[**Download FBA Arcade 0.5.7 APK**](https://github.com/Ankushui18/Fba/raw/refs/heads/arena/efa257c2-fba/artifacts/fba-arcade-0.5.7-preview-link-arm64-v8a-test.apk)
-— signed, 64-bit ARM, **Android 8 or later**. **Add games** accepts `.nes`
-cartridges directly, including common NES dumps outside the FBNeo set list.
+[**Download FBA Arcade 0.5.8 APK**](https://github.com/Ankushui18/Fba/raw/refs/heads/arena/efa257c2-fba/artifacts/fba-arcade-0.5.8-preview-link-arm64-v8a-test.apk)
+— signed, 64-bit ARM, **Android 8 or later**. **Add games** accepts more `.nes`
+cartridge types directly. **Import results** explains any file that wasn't added
+or shows its library title if it is already listed.
 The same APK handles FBNeo ZIPs, [19 console/computer systems](docs/CONSOLE_SUPPORT.md), offline solo play, [local Wi-Fi/Bluetooth multiplayer](docs/LINK_PLAY.md),
 [Quick Resume](#quick-resume), and [Backup & restore](#back-up-saves-and-settings).
 There is no separate Offline build.
 
-Download the `.apk`, not the [SHA-256 checksum](artifacts/FBA-Arcade-0.5.7-SHA256SUMS.txt).
-**Install over 0.5.6, 0.5.5, 0.5.4, 0.5.3, 0.5.2 (Link or the earlier Offline flavor), or 0.5.1
-Recovery Preview without uninstalling.** The app ID and signer match, so the
-library, saves and settings stay in place.
+Download the `.apk`, not the [SHA-256 checksum](artifacts/FBA-Arcade-0.5.8-SHA256SUMS.txt).
+**Install over Recovery Preview 0.5.1–0.5.7 without uninstalling.** The app ID
+and signer match, so the library, saves and settings stay in place. Use **Add
+games** again for files that were previously skipped.
 
 The separately signed original **FBA Arcade Recovery** and **FBA4droid** are not
 updated by this APK. Leave them installed if you need their data. The backup
@@ -182,7 +183,7 @@ export ANDROID_SDK_ROOT=/path/to/android-sdk
 export ANDROID_NDK_HOME="$ANDROID_SDK_ROOT/ndk/28.2.13676358"
 ./tools/build-apk.sh
 ./tools/test.sh
-./tools/verify-apk.sh artifacts/fba-arcade-0.5.7-link-arm64-v8a-test.apk
+./tools/verify-apk.sh artifacts/fba-arcade-0.5.8-link-arm64-v8a-test.apk
 ```
 
 No Gradle/Maven dependencies or legacy APK files are needed. `tools/build-core.sh`

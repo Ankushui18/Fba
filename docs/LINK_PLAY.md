@@ -1,6 +1,6 @@
 # FBA Arcade Link beta
 
-Install the [FBA Arcade 0.5.7 APK](../README.md#install-and-play) on both phones.
+Install the [FBA Arcade 0.5.8 APK](../README.md#install-and-play) on both phones.
 It includes solo play and arcade Link multiplayer, and updates 0.5.6, 0.5.5, 0.5.4, 0.5.3,
 0.5.2 or 0.5.1 Recovery Preview without uninstalling. It does not update the
 separately signed original Recovery. Console imports are solo-only. The wire and

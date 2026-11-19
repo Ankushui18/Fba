@@ -4,6 +4,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
+import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -20,7 +21,7 @@ import java.util.zip.ZipOutputStream;
 final class LooseNes {
     private static final String PREFIX = "nes_local_", MEMBER = "cartridge.nes", DRIVER = "nes_fba_local";
     private static final Pattern ARCHIVE = Pattern.compile(PREFIX + "[0-9a-f]{64}\\.zip");
-    private static final int MAX_BYTES = 16 + 512 + 768 * 1024;
+    private static final int MAX_BYTES = 16 + 512 + 768 * 1024, MAX_DUMP_PADDING = 512;
     private static final String MATCHING_SET = " A matching FBNeo NES ZIP can still work if this game has one.";
 
     private LooseNes() {}
@@ -38,6 +39,31 @@ final class LooseNes {
         if (ext.equals("nes") || ext.equals("bin") || ext.equals("rom")) clean = clean.substring(0, clean.lastIndexOf('.')).trim();
         int n = clean.codePointCount(0, clean.length());
         return n <= 80 ? clean : clean.substring(0, clean.offsetByCodePoints(0, 80)).trim();
+    }
+
+    /** Old dumps can end in a small run of filler bytes. Only touch the private import copy. */
+    static boolean trimPadding(Path copy, int length) throws IOException {
+        if (length <= 16) return false;
+        try (RandomAccessFile file = new RandomAccessFile(copy.toFile(), "rw")) {
+            byte[] header = new byte[16];
+            file.readFully(header);
+            if (!hasHeader(header) || header[4] == 0 || (header[7] & 3) != 0) return false;
+            if ((header[7] & 12) == 8 && (header[9] != 0 || header[14] != 0)) return false;
+            int end = payloadEnd(header);
+            int padding = length - end;
+            if (padding <= 0 || padding > MAX_DUMP_PADDING) return false;
+            file.seek(end);
+            int fill = file.read();
+            if (fill != 0 && fill != 255) return false;
+            for (int i = 1; i < padding; i++) if (file.read() != fill) return false;
+            LocalFiles.interrupted();
+            file.setLength(end);
+            return true;
+        }
+    }
+
+    private static int payloadEnd(byte[] header) {
+        return 16 + ((header[6] & 4) == 0 ? 0 : 512) + (header[4] & 255) * 16384 + (header[5] & 255) * 8192;
     }
 
     static String importCartridge(Path library, Path source) throws IOException {
@@ -103,16 +129,16 @@ final class LooseNes {
         final String sha;
 
         Cartridge(byte[] data) throws IOException {
-            validateHeader(data);
+            int mapper = validateHeader(data);
             this.data = data;
             CRC32 sum = new CRC32();
             sum.update(data);
             crc = sum.getValue();
-            // The pinned core has CRC-specific geometry/mapper overrides and VS protection.
-            // Those cartridges must use their actual listed sets, not this generic loader.
+            // The pinned core has CRC-specific geometry/mapper overrides, VS
+            // protection and a mapper-71 PRG hot patch. Keep them on the exact set path.
             // The RomData parser also reserves UINT32_MAX as an invalid field.
             if (crc == 0x2a798367L || crc == 0xdd65a6ccL || crc == 0x9f2251e4L || crc == 0xd81d33daL
-                    || crc == 0xac95e2c9L || crc == 0xffffffffL) {
+                    || crc == 0xac95e2c9L || (mapper == 71 && crc == 0xa64e926aL) || crc == 0xffffffffL) {
                 throw invalid("This cartridge needs a matching FBNeo NES set rather than the direct loader.");
             }
             sha = LocalFiles.hex(LocalFiles.sha256().digest(data), 32);
@@ -134,7 +160,7 @@ final class LooseNes {
         }
     }
 
-    private static void validateHeader(byte[] data) throws IOException {
+    private static int validateHeader(byte[] data) throws IOException {
         if (data.length < 16 || !hasHeader(data)) {
             throw invalid("This isn't a valid .nes cartridge. Select an extracted iNES or NES 2.0 file, not a renamed ZIP.");
         }
@@ -147,10 +173,10 @@ final class LooseNes {
         if (nes20 && data[9] != 0) {
             throw invalid("This NES 2.0 file uses extended ROM sizes that this direct loader doesn't support." + MATCHING_SET);
         }
-        int trainer = (flags & 4) != 0 ? 512 : 0;
-        int required = 16 + trainer + prg * 16384 + chr * 8192;
-        if (prg == 0 || data.length < required) throw invalid("The .nes file is incomplete or its header has the wrong ROM size.");
-        if (data.length != required) throw invalid("The .nes file has extra data beyond its cartridge image." + MATCHING_SET);
+        int required = payloadEnd(data);
+        if (prg == 0) throw invalid("The .nes header declares no program ROM.");
+        if (data.length < required) throw invalid("The .nes file is incomplete: its header needs " + required + " bytes but the file has " + data.length + ".");
+        if (data.length != required) throw invalid("The .nes file has " + (data.length - required) + " extra bytes after the declared cartridge data." + MATCHING_SET);
         int mapper = (flags >>> 4) | (diskDude ? 0 : kind & 0xf0);
         if (nes20) mapper |= (data[8] & 15) << 8;
         boolean layout;
@@ -161,21 +187,36 @@ final class LooseNes {
             case 3: layout = prg <= 2 && chr >= 1 && chr <= 4; break;    // CNROM
             case 4: layout = prg >= 2 && prg <= 32 && chr <= 32; break;  // MMC3
             case 7: layout = prg >= 2 && prg <= 16 && chr == 0; break;   // AxROM
+            case 9: layout = prg >= 2 && prg <= 8 && chr >= 1 && chr <= 16; break; // MMC2
+            case 10: layout = prg >= 2 && prg <= 16 && chr >= 1 && chr <= 16; break; // MMC4
+            case 11: layout = prg >= 2 && prg <= 8 && chr >= 1 && chr <= 16; break; // Color Dreams
+            case 34: layout = prg >= 2 && (chr == 0 ? prg <= 16 : prg <= 4 && chr <= 8); break; // BNROM / NINA-001
             case 66: layout = prg >= 2 && prg <= 8 && chr >= 1 && chr <= 4; break; // GxROM
+            case 71: layout = prg >= 2 && prg <= 16 && chr == 0; break;  // Camerica
+            case 87: layout = prg <= 2 && chr >= 1 && chr <= 4; break;   // Jaleco/JF boards
+            case 94: layout = prg >= 2 && prg <= 8 && chr == 0; break;    // UN1ROM
             default: throw invalid("NES mapper " + mapper + " isn't supported for direct play yet." + MATCHING_SET);
         }
         if (!layout || (prg & (prg - 1)) != 0 || (chr & (chr - 1)) != 0) {
-            throw invalid("This cartridge's ROM layout isn't supported for direct NES play." + MATCHING_SET);
+            throw invalid("Mapper " + mapper + " has an unsupported ROM layout (" + (prg * 16) + " KiB program, "
+                    + (chr * 8) + " KiB graphics)." + MATCHING_SET);
         }
         if (nes20) {
+            int submapper = (data[8] & 255) >>> 4;
+            boolean mapper34Variant = mapper == 34 && (submapper == 1 && chr > 0 || submapper == 2 && chr == 0);
+            if (submapper != 0 && !mapper34Variant) {
+                throw invalid("Mapper " + mapper + ", submapper " + submapper + " isn't supported for direct play yet." + MATCHING_SET);
+            }
             int wram = data[10] & 15, sram = (data[10] & 255) >>> 4;
             int ramLimit = mapper == 1 ? 9 : 7;
-            if ((data[8] & 0xf0) != 0 || wram > ramLimit || sram > ramLimit || (wram != 0 && sram != 0)
-                    || (trainer != 0 && Math.max(wram, sram) != 7)
-                    || (chr == 0 ? data[11] != 7 : data[11] != 0)
-                    || (data[12] & 255) > 1 || data[13] != 0 || data[14] != 0 || (data[15] & 255) > 1) {
-                throw invalid("This NES 2.0 cartridge needs a board, memory or controller variant not supported for direct play." + MATCHING_SET);
+            if (wram > ramLimit || sram > ramLimit || (wram != 0 && sram != 0)
+                    || ((flags & 4) != 0 && Math.max(wram, sram) != 7) || (chr == 0 ? data[11] != 7 : data[11] != 0)) {
+                throw invalid("Mapper " + mapper + " declares a RAM layout not supported for direct play." + MATCHING_SET);
+            }
+            if ((data[12] & 255) > 1 || data[13] != 0 || data[14] != 0 || (data[15] & 255) > 1) {
+                throw invalid("Mapper " + mapper + " uses a NES 2.0 timing, cartridge or controller variant not supported for direct play." + MATCHING_SET);
             }
         }
+        return mapper;
     }
 }

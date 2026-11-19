@@ -69,9 +69,26 @@ public final class LooseNesTest {
 
             expect("isn't a valid .nes", () -> add(library, "fake.nes", new byte[40976], sets));
             expect("incomplete", () -> add(library, "truncated.nes", Arrays.copyOf(nrom, nrom.length - 1), sets));
-            expect("extra data", () -> add(library, "trailing.nes", Arrays.copyOf(nrom, nrom.length + 1), sets));
+            byte[] padded = Arrays.copyOf(nrom, nrom.length + 512);
+            check(name.equals(add(library, "Padded.nes", padded, sets)), "uniform padding preserves cartridge identity");
+            Arrays.fill(padded, nrom.length, padded.length, (byte) 0xff);
+            check(name.equals(add(library, "Other padding.nes", padded, sets)) && Arrays.equals(packed, Files.readAllBytes(archive)),
+                    "FF padding, same saved bytes");
+            padded[padded.length - 1] = 1;
+            expect("extra bytes", () -> add(library, "trailing data.nes", padded, sets));
+            expect("extra bytes", () -> add(library, "oversized tail.nes", Arrays.copyOf(nrom, nrom.length + 513), sets));
+            expect("extra bytes", () -> {
+                byte[] miscRom = Arrays.copyOf(pal, pal.length + 64);
+                miscRom[14] = 1; // NES 2.0 declares additional ROM data, not padding.
+                add(library, "extra rom.nes", miscRom, sets);
+            });
             expect("mapper 255", () -> add(library, "mapper.nes", cart(2, 1, 255), sets));
-            expect("ROM layout", () -> add(library, "layout.nes", cart(4, 1, 0), sets));
+            expect("Mapper 0 has an unsupported ROM layout", () -> add(library, "layout.nes", cart(4, 1, 0), sets));
+            expect("Mapper 9 has an unsupported ROM layout", () -> add(library, "invalid MMC2.nes", cart(8, 0, 9), sets));
+            expect("Mapper 11 has an unsupported ROM layout", () -> add(library, "oversized Color Dreams.nes", cart(16, 16, 11), sets));
+            expect("Mapper 34 has an unsupported ROM layout", () -> add(library, "oversized NINA-001.nes", cart(8, 8, 34), sets));
+            expect("Mapper 87 has an unsupported ROM layout", () -> add(library, "Jaleco without CHR ROM.nes", cart(2, 0, 87), sets));
+            expect("Mapper 94 has an unsupported ROM layout", () -> add(library, "UN1ROM with CHR ROM.nes", cart(8, 1, 94), sets));
             expect("standard home NES", () -> {
                 byte[] vs = nrom.clone(); vs[7] = 1;
                 add(library, "vs.nes", vs, sets);
@@ -83,6 +100,14 @@ public final class LooseNesTest {
             expect("controller variant", () -> {
                 byte[] zapper = pal.clone(); zapper[15] = 8;
                 add(library, "zapper.nes", zapper, sets);
+            });
+            expect("Mapper 4, submapper 1", () -> {
+                byte[] board = pal.clone(); board[8] = 0x10;
+                add(library, "MMC6.nes", board, sets);
+            });
+            expect("Mapper 34, submapper 2", () -> {
+                byte[] wrongBoard = cart(2, 4, 34); wrongBoard[7] |= 8; wrongBoard[8] = 0x20;
+                add(library, "BNROM with CHR ROM.nes", wrongBoard, sets);
             });
             expect("Choose a .nes", () -> add(library, "not-a-rom", new byte[]{1, 2, 3}, sets));
             expect("CD disc images", () -> add(library, "disc.chd", nrom, sets));

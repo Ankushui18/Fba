@@ -31,6 +31,22 @@ public final class ConsoleRouteProbe {
         }
     }
 
+    private Path addWithPadding(String source, String padded, String expected) throws Exception {
+        Path file = raw.resolve(padded);
+        byte[] input = Files.readAllBytes(file);
+        Path zip = add(file, expected);
+        byte[] packed = Files.readAllBytes(zip);
+        byte[] original = Files.readAllBytes(raw.resolve(source));
+        try (ZipFile archive = new ZipFile(zip.toFile()); InputStream member = archive.getInputStream(archive.entries().nextElement())) {
+            if (!Arrays.equals(original, LocalFiles.read(member, original.length))) throw new AssertionError("Only filler bytes may be removed.");
+        }
+        if (!zip.equals(add(raw.resolve(source), expected)) || !Arrays.equals(packed, Files.readAllBytes(zip))
+                || !Arrays.equals(input, Files.readAllBytes(file))) {
+            throw new AssertionError("Padded and exact bytes must share save identity without editing the source.");
+        }
+        return zip;
+    }
+
     private void launch(BufferedWriter out, String title, String mode, Path zip) throws Exception {
         ConsoleStore.Launch launch = store.stage(zip.toFile(), Files.createDirectory(root.resolve(title)));
         Path save = Files.createDirectories(launch.saveDirectory(saves.toFile(), zip.toFile()).toPath());
@@ -55,8 +71,8 @@ public final class ConsoleRouteProbe {
 
     private void verify(Path localNinja) throws Exception {
         try (BufferedWriter out = Files.newBufferedWriter(root.resolve("launches.tsv"), StandardCharsets.UTF_8)) {
-            Path nes = add(raw.resolve("Cartridge.nes"), "nes_smb");
-            launch(out, "nes", "ok", nes);
+            Path nes = addWithPadding("Cartridge.nes", "Padded matching cartridge.nes", "nes_smb");
+            launch(out, "nes-from-padded-dat", "ok", nes);
             launch(out, "snes", "ok", add(raw.resolve("Headered cartridge.smc"), "snes_supermarioworld"));
             launch(out, "genesis", "ok", add(raw.resolve("Genesis cartridge.bin"), "md_sonic"));
             launch(out, "sms", "ok", add(raw.resolve("Master System cartridge.sms"), "sms_alexkidd"));
@@ -68,7 +84,7 @@ public final class ConsoleRouteProbe {
                 if (!bios.equals("bios_fds_fdsbios.zip")) throw new AssertionError(bios);
             }
             launch(out, "fds-with-bios", "ok", disk);
-            launch(out, "loose-nrom", "local-battery", add(raw.resolve("Homebrew.nes"), null));
+            launch(out, "loose-padded-nrom", "local-battery", addWithPadding("Homebrew.nes", "Padded NROM.nes", null));
             launch(out, "loose-no-extension", "local-battery", add(raw.resolve("Headerless filename"), null));
             launch(out, "loose-mmc1", "local-battery", add(raw.resolve("MMC1.NES"), null));
             launch(out, "loose-uxrom", "local", add(raw.resolve("UxROM.nes"), null));
@@ -78,6 +94,14 @@ public final class ConsoleRouteProbe {
             launch(out, "loose-mmc3-pal", "local-pal", add(raw.resolve("MMC3 PAL.nes"), null));
             launch(out, "loose-axrom", "local", add(raw.resolve("AxROM.nes"), null));
             launch(out, "loose-gxrom", "local", add(raw.resolve("GxROM.nes"), null));
+            launch(out, "loose-mmc2", "local", add(raw.resolve("MMC2.nes"), null));
+            launch(out, "loose-mmc4", "local-battery", add(raw.resolve("MMC4.nes"), null));
+            launch(out, "loose-color-dreams", "local", add(raw.resolve("Color Dreams.nes"), null));
+            launch(out, "loose-bnrom", "local", add(raw.resolve("BNROM.nes"), null));
+            launch(out, "loose-nina001", "local", add(raw.resolve("NINA-001.nes"), null));
+            launch(out, "loose-camerica", "local", add(raw.resolve("Camerica.nes"), null));
+            launch(out, "loose-jaleco", "local", add(raw.resolve("Jaleco.nes"), null));
+            launch(out, "loose-un1rom", "local", add(raw.resolve("UN1ROM.nes"), null));
             // A synthetic CRC collision must launch only through the separate generic path.
             launch(out, "loose-unverified-collision", "local", add(raw.resolve("Unverified NES collision.nes"), null));
             launch(out, "nes-after-loose", "ok", nes);
