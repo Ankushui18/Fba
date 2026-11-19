@@ -15,9 +15,9 @@ trap 'rm -rf -- "$work"' EXIT
 javac="${JAVA_HOME:+$JAVA_HOME/bin/}javac"
 java="${JAVA_HOME:+$JAVA_HOME/bin/}java"
 app="$main/java/io/github/ankushui18/fbaoffline"
-"$javac" -encoding UTF-8 --release 8 -d "$work" "$app"/{RomStore,GameImport,ImportReport,LooseNes,ConsoleStore,ConsoleSystem,Joypad,PadBindings,AutoFire,PadLayout,PadInput,PadProfile,StateStore,QuickResumeStore,LocalFiles,BackupStore,BackupSettings,IpsPatch,PatchStore,LegacyIps,UserCheats,RomNotes,LegacySkinFiles,LatestFrame}.java \
+"$javac" -encoding UTF-8 --release 8 -d "$work" "$app"/{RomStore,GameImport,ImportReport,LooseNes,ConsoleStore,ConsoleSystem,Joypad,PadBindings,AutoFire,PadLayout,PadInput,PadProfile,StateStore,QuickResumeStore,LocalFiles,BackupStore,BackupSettings,CoreProfile,HighScoreData,IpsPatch,PatchStore,LegacyIps,UserCheats,RomNotes,LegacySkinFiles,LatestFrame}.java \
   "$root/tests/RomStoreTest.java" "$root/tests/LooseNesTest.java" "$root/tests/ConsoleStoreTest.java" "$root/tests/ImportReportTest.java" "$root/tests/PadTest.java" "$root/tests/StateStoreTest.java" "$root/tests/BackupStoreTest.java" \
-  "$root/tests/QuickResumeTest.java" "$root/tests/GameFilesTest.java" "$root/tests/ParityFilesTest.java" "$root/tests/LatestFrameTest.java"
+  "$root/tests/QuickResumeTest.java" "$root/tests/GameFilesTest.java" "$root/tests/ParityFilesTest.java" "$root/tests/LatestFrameTest.java" "$root/tests/CoreProfileTest.java"
 "$java" -cp "$work" io.github.ankushui18.fbaoffline.RomStoreTest
 "$java" -cp "$work" io.github.ankushui18.fbaoffline.ConsoleStoreTest "$main/assets/console-sets.tsv"
 "$java" -cp "$work" io.github.ankushui18.fbaoffline.LooseNesTest "$main/assets/console-sets.tsv"
@@ -29,6 +29,7 @@ app="$main/java/io/github/ankushui18/fbaoffline"
 "$java" -cp "$work" io.github.ankushui18.fbaoffline.GameFilesTest
 "$java" -cp "$work" io.github.ankushui18.fbaoffline.ParityFilesTest
 "$java" -cp "$work" io.github.ankushui18.fbaoffline.LatestFrameTest
+"$java" -cp "$work" io.github.ankushui18.fbaoffline.CoreProfileTest "$core/metadata/hiscore.dat"
 "$javac" -encoding UTF-8 --release 8 -d "$work" \
   "$root/android/src/link/java/io/github/ankushui18/fbaoffline/LinkWire.java" "$root/tests/LinkWireTest.java"
 "$java" -cp "$work" io.github.ankushui18.fbaoffline.LinkWireTest

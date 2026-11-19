@@ -1,6 +1,6 @@
 # FBA Arcade Link beta
 
-Install the [FBA Arcade 0.5.8 APK](../README.md#install-and-play) on both phones.
+Install the [FBA Arcade 0.5.9 APK](../README.md#install-and-play) on both phones.
 It includes solo play and arcade Link multiplayer, and updates 0.5.6, 0.5.5, 0.5.4, 0.5.3,
 0.5.2 or 0.5.1 Recovery Preview without uninstalling. It does not update the
 separately signed original Recovery. Console imports are solo-only. The wire and
@@ -40,7 +40,8 @@ advertisement permission is requested.
   core's existing deterministic random/time mode before driver init. Local
   Link files are temporary; they do not read or change solo states, scores or
   emulated battery storage. Exiting a Link match never changes Quick Resume.
-  Saves, patches, cheats and DIP changes remain solo features.
+  Saves, patches, cheats and DIP changes remain solo features. Per-game FBNeo
+  settings are also ignored; Link boots at the original defaults.
 - Link exchanges compatibility fingerprints and authenticated fixed-size
   digital inputs, pause flags and periodic AV checksums. It **does not** send
   ROM contents, saves, device files, or telemetry; no relay or DNS lookup is

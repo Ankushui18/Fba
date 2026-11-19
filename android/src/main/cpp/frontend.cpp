@@ -43,14 +43,17 @@ public:
 
 #define ENTRY(fn) Java_io_github_ankushui18_fbaoffline_Core_##fn
 
-extern "C" JNIEXPORT jstring JNICALL ENTRY(open)(JNIEnv *env, jclass, jstring rom, jstring system, jstring save, jboolean patched, jboolean linked) {
+extern "C" JNIEXPORT jstring JNICALL ENTRY(open)(JNIEnv *env, jclass, jstring rom, jstring system, jstring save,
+                                               jboolean patched, jboolean linked, jstring profile) {
     const UtfChars romPath(env, rom);
     if (env->ExceptionCheck()) return nullptr;
     const UtfChars systemPath(env, system);
     if (env->ExceptionCheck()) return nullptr;
     const UtfChars savePath(env, save);
     if (env->ExceptionCheck()) return nullptr;
-    const char *error = arcade::open(romPath.value, systemPath.value, savePath.value, patched, linked);
+    const UtfChars bootProfile(env, profile);
+    if (env->ExceptionCheck()) return nullptr;
+    const char *error = arcade::open(romPath.value, systemPath.value, savePath.value, patched, linked, bootProfile.value);
     return error ? env->NewStringUTF(error) : nullptr;
 }
 
@@ -75,6 +78,7 @@ extern "C" JNIEXPORT jint JNICALL ENTRY(frameSize)(JNIEnv *, jclass) {
     const auto video = arcade::video();
     return (video.width << 16) | video.height;
 }
+extern "C" JNIEXPORT jboolean JNICALL ENTRY(videoUpdated)(JNIEnv *, jclass) { return arcade::videoUpdated(); }
 extern "C" JNIEXPORT jlong JNICALL ENTRY(linkCheckpoint)(JNIEnv *, jclass) { return static_cast<jlong>(arcade::linkCheckpoint()); }
 extern "C" JNIEXPORT jint JNICALL ENTRY(inputMask)(JNIEnv *, jclass, jint port) { return arcade::inputMask(port); }
 extern "C" JNIEXPORT jint JNICALL ENTRY(rotation)(JNIEnv *, jclass) { return arcade::video().rotation; }
@@ -137,7 +141,7 @@ extern "C" JNIEXPORT jboolean JNICALL ENTRY(restoreState)(JNIEnv *env, jclass, j
     return ok;
 }
 
-extern "C" JNIEXPORT jobjectArray JNICALL ENTRY(options)(JNIEnv *env, jclass) {
+extern "C" JNIEXPORT jobjectArray JNICALL ENTRY(options)(JNIEnv *env, jclass, jboolean bootOnly) {
     const auto &options = arcade::options();
     jclass string = env->FindClass("java/lang/String");
     if (!string) return nullptr;
@@ -148,13 +152,13 @@ extern "C" JNIEXPORT jobjectArray JNICALL ENTRY(options)(JNIEnv *env, jclass) {
     jstring utf8 = env->NewStringUTF("UTF-8");
     if (!utf8) return nullptr;
     size_t visible = 0;
-    for (const auto &option : options) if (option.visible) visible++;
+    for (const auto &option : options) if (option.visible && option.bootOnly == (bootOnly != 0)) visible++;
     auto out = env->NewObjectArray(static_cast<jsize>(visible), rowType, nullptr);
     if (!out) return nullptr;
     jsize index = 0;
     for (const auto &option : options) {
-        if (!option.visible) continue;
-        auto row = env->NewObjectArray(static_cast<jsize>(6 + option.choices.size()), string, nullptr);
+        if (!option.visible || option.bootOnly != (bootOnly != 0)) continue;
+        auto row = env->NewObjectArray(static_cast<jsize>(6 + (bootOnly ? 2 : 1) * option.choices.size()), string, nullptr);
         if (!row) return nullptr;
         // Core metadata is UTF-8, not JNI Modified UTF-8.
         auto field = [&](jsize column, const std::string &value) {
@@ -176,7 +180,10 @@ extern "C" JNIEXPORT jobjectArray JNICALL ENTRY(options)(JNIEnv *env, jclass) {
         field(3, option.info);
         field(4, std::to_string(option.selected));
         field(5, std::to_string(option.defaultChoice));
-        for (size_t j = 0; j < option.choices.size(); j++) field(static_cast<jsize>(6 + j), option.choices[j].label);
+        for (size_t j = 0; j < option.choices.size(); j++) {
+            field(static_cast<jsize>(6 + j), option.choices[j].label);
+            if (bootOnly) field(static_cast<jsize>(6 + option.choices.size() + j), option.choices[j].value);
+        }
         if (env->ExceptionCheck()) return nullptr;
         env->SetObjectArrayElement(out, index++, row);
         env->DeleteLocalRef(row);

@@ -1,12 +1,12 @@
-# FBA Arcade 0.5.8 — Android acceptance checks
+# FBA Arcade 0.5.9 — Android acceptance checks
 
 The signed ARM64 APK passed build and host verification. No Android device
 was connected. These checks verify Android UI/SAF, input, audio, and hardware
 connectivity on a phone or tablet. Use legally obtained cartridges or ROM sets
 for the pinned FBNeo revision, including any required BIOS/parent dependencies.
 
-1. **Update in place.** Install the [0.5.8 APK](../README.md#install-and-play)
-   over 0.5.1–0.5.7 Recovery Preview. Do not uninstall first. Check that
+1. **Update in place.** Install the [0.5.9 APK](../README.md#install-and-play)
+   over 0.5.1–0.5.8 Recovery Preview. Do not uninstall first. Check that
    ROMs, saved folder access, Favorites, list/grid, Quick Resume and a manual
    save still work. Any original Recovery or FBA4droid install should be
    untouched. Start a solo game without a network connection or a Bluetooth/Local
@@ -123,10 +123,25 @@ for the pinned FBNeo revision, including any required BIOS/parent dependencies.
     The Quick Resume checkpoint and its toggle must remain local. Cancel a
     picker/confirmation and try a plain ROM ZIP and a truncated copy of the backup;
     none should change the current slots or settings.
-11. **Local multiplayer, two phones.** Install the same 0.5.8 APK on both.
+11. **FBNeo settings and high scores.** In a GBA game, save a default state and
+    a Quick Resume checkpoint. Use **Pause → FBNeo settings** to choose **Force
+    60Hz** and **44100** under Audio sample rate. Save, exit and relaunch with a
+    normal tap. Check that changing it while paused didn't affect the active
+    session, that sound plays after relaunch, and that the old state/checkpoint
+    are refused without deletion. Save a second slot and load it with the same
+    settings. Reset through the library row and load the original slot. In a 50 Hz
+    PAL title, Force 60 Hz must not turn it into a 60 Hz title. On a suitable
+    arcade title, combine core and display frameskip and verify there are still
+    visible frames and continuous audio. Open another game and check defaults.
+    For a score-supported set, install the [pinned hiscore.dat](../README.md#high-score-setup)
+    through the picker; try an unrelated file first and verify it is rejected.
+    Enable high scores, reopen, earn a new score, exit explicitly and reopen to
+    check that it persisted. Try the same game with an IPS variant and in Link;
+    the extra menu should be absent. No handset checks have been completed here.
+12. **Local multiplayer, two phones.** Install the same 0.5.9 APK on both.
     See [Link setup](LINK_PLAY.md). Test Wi-Fi P1/P2 and paired Bluetooth P1/P2.
     Check separate inputs, paired pause/resume and safe exit. Try different
-    filters on the two phones. Check a mixed 0.5.7/0.5.8 pair (same protocol), a
+    filters on the two phones. Check a mixed 0.5.8/0.5.9 pair (same protocol), a
     rejected 0.4.0 peer, wrong room code, different ZIP revision, permission
     denial, cancellation and network loss or app background. Check that the solo
     Quick Resume checkpoint and other solo data stay unchanged after a Link match.

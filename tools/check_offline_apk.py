@@ -118,7 +118,7 @@ def inspect_manifest(aapt2, apk, link):
     require(version_code < 8 or link, "current APKs must include local multiplayer")
     # Older pinned downloads still have their original labels. The app IDs are unchanged.
     suffix, label = PACKAGES[package[1]] if version_code < 7 else ("", "FBA Arcade")
-    released_versions = {7: "0.5.2", 8: "0.5.3", 9: "0.5.4", 10: "0.5.5", 11: "0.5.6", 12: "0.5.7", 13: "0.5.8"}
+    released_versions = {7: "0.5.2", 8: "0.5.3", 9: "0.5.4", 10: "0.5.5", 11: "0.5.6", 12: "0.5.7", 13: "0.5.8", 14: "0.5.9"}
     version = re.escape(released_versions[version_code]) if version_code in released_versions else r"\d+\.\d+\.\d+"
     expected_version = version + re.escape(suffix + ("-link" if link else ""))
     require(re.fullmatch(expected_version, package[3]), "wrong APK version or variant")
@@ -203,11 +203,14 @@ def main(aapt2, apk, link=False):
         elif version_code == 10:
             mandatory.add(NES_INDEX_ASSET)
         if link:
-            patch, source = ("assets/FBNeo-SESSION.patch", "fbneo-session.patch") if version_code >= 11 else (
-                "assets/FBNeo-LINK.patch", "fbneo-lockstep.patch")
-            mandatory.add(patch)
-            require(patch in entries and z.read(patch) == (CATALOG_DIR.parent.parent / "patches" / source).read_bytes(),
-                    "FBNeo patch differs from source")
+            patches = [("assets/FBNeo-SESSION.patch", "fbneo-session.patch")] if version_code >= 11 else [
+                ("assets/FBNeo-LINK.patch", "fbneo-lockstep.patch")]
+            if version_code >= 14:
+                patches.append(("assets/FBNeo-HISCORE.patch", "fbneo-hiscore.patch"))
+            for patch, source in patches:
+                mandatory.add(patch)
+                require(patch in entries and z.read(patch) == (CATALOG_DIR.parent.parent / "patches" / source).read_bytes(),
+                        f"FBNeo patch differs from source: {patch}")
         require(mandatory <= entries, f"missing files: {mandatory - entries}")
         require(z.read("assets/FBNeo-LICENSE.txt") == FBNEO_LICENSE.read_bytes(),
                 "FBNeo license must be the full, verbatim text for the pinned core")

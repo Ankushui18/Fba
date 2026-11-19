@@ -7,18 +7,19 @@ final class Core {
     static { System.loadLibrary("offlinefb"); }
     private Core() {}
 
-    static native String open(String rom, String system, String save, boolean patched, boolean linked);
+    static native String open(String rom, String system, String save, boolean patched, boolean linked, String profile);
     static native void close();
     static native int step(long input, short[] output);
     static native void keyboard(int[] keys);
     static native boolean reset();
     static native byte[] captureState();
     static native boolean restoreState(byte[] data);
-    static native String[][] options();
+    static native String[][] options(boolean bootOnly);
     static native boolean setOption(String key, int choice);
     static native long linkCheckpoint();
     static native int inputMask(int port);
     static native int frameSize();
+    static native boolean videoUpdated();
     static native int rotation();
     static native float aspect();
     static native double fps();

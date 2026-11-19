@@ -23,8 +23,8 @@ core=${FBNEO_SOURCE:-$root/.cache/FBNeo-libretro}
 abis=${ANDROID_ABIS:-arm64-v8a}
 min_sdk=26
 target_sdk=37
-version=0.5.8
-version_code=13
+version=0.5.9
+version_code=14
 artifact_suffix=
 java_package=io.github.ankushui18.fbaoffline
 recovery=${ARCADE_RECOVERY:-0}
@@ -117,7 +117,8 @@ cp "$main/assets/"{game-art.zip,game-catalog.tsv,game-cheats.zip,ips-targets.zip
 manifest="$work/AndroidManifest.xml"
 python3 "$root/tools/link_manifest.py" "$main/AndroidManifest.xml" "$manifest"
 cp "$root/android/patches/fbneo-session.patch" "$work/assets/FBNeo-SESSION.patch"
-printf '\nThis build applies FBNeo-SESSION.patch for deterministic Link startup and safe driver switching in the same process.\n' >> "$work/assets/CORE-SOURCE.txt"
+cp "$root/android/patches/fbneo-hiscore.patch" "$work/assets/FBNeo-HISCORE.patch"
+printf '\nThis build applies FBNeo-SESSION.patch for deterministic Link startup and safe driver switching,\nand FBNeo-HISCORE.patch to ignore incomplete or mismatched score files.\n' >> "$work/assets/CORE-SOURCE.txt"
 # Keep the checked-in legacy PNG pixels/chunks unchanged for the APK allowlist.
 "$bsdk/aapt2" compile --no-crunch --dir "$main/res" -o "$work/res.zip"
 "$bsdk/aapt2" link -I "$jar" --java "$work/generated" --manifest "$manifest" -A "$work/assets" \

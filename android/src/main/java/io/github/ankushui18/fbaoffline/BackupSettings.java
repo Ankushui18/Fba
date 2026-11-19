@@ -8,7 +8,7 @@ import java.util.Map;
 import java.util.TreeMap;
 import java.util.regex.Pattern;
 
-/** Portable UI preferences only; never copy Android grants or the shared-preferences file. */
+/** Portable UI and core preferences only; never copy Android grants or the shared-preferences file. */
 final class BackupSettings {
     static final int MAX_BYTES = 2 * 1024 * 1024;
     private static final int MAGIC = 0x46424142, VERSION = 1, MAX_KEYS = 8192;
@@ -63,14 +63,16 @@ final class BackupSettings {
 
     private static boolean valid(String name, Object value) {
         if (name == null || name.length() > 128) return false;
+        if (name.startsWith(CoreProfile.PREFIX)) {
+            String rom = name.substring(CoreProfile.PREFIX.length());
+            return validRom(rom) && value instanceof String && CoreProfile.valid((String) value);
+        }
         String key = name;
         boolean perGame = name.startsWith("game:");
         if (perGame) {
             int split = name.indexOf(':', 5);
             if (split < 0) return false;
-            String rom = name.substring(5, split);
-            try { if (!rom.equals(RomStore.archiveName(rom))) return false; }
-            catch (IOException invalid) { return false; }
+            if (!validRom(name.substring(5, split))) return false;
             key = name.substring(split + 1);
         }
         switch (key) {
@@ -92,6 +94,11 @@ final class BackupSettings {
                 return (key.equals("turbo") || COMBOS.matcher(key).matches())
                         && value instanceof Integer && ((int) value & ~PadBindings.FACE_MASK) == 0;
         }
+    }
+
+    private static boolean validRom(String name) {
+        try { return name.equals(RomStore.archiveName(name)); }
+        catch (IOException invalid) { return false; }
     }
 
     private static boolean validLayout(String value) {

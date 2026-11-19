@@ -19,15 +19,18 @@ retro_log_callback logger;
 bool active = false, running = false, rgb565 = false;
 bool variableUpdate = false, typing = false;
 uint32_t ticks;
+int rate = 48000;
 constexpr char cheatKey[] = "fbneo-cheat-probe";
 constexpr char hiddenKey[] = "fbneo-dipswitch-secret";
 constexpr char ignoredKey[] = "fbneo-unrelated";
+constexpr char sampleKey[] = "fbneo-samplerate";
+constexpr char depthKey[] = "fbneo-allow-depth-32";
 constexpr char disabled[] = "0 - Disabled";
 constexpr char enabled[] = "1 - Enabled";
 
 void helpOptions(bool reverse) {
     char translated[] = "Test memory write";
-    struct retro_core_option_v2_definition definitions[4] = {};
+    struct retro_core_option_v2_definition definitions[6] = {};
     definitions[0].key = cheatKey;
     definitions[0].desc_categorized = translated;
     definitions[0].info = "Test core metadata";
@@ -41,6 +44,16 @@ void helpOptions(bool reverse) {
     definitions[2] = definitions[0];
     definitions[2].key = ignoredKey;
     definitions[2].category_key = "system";
+    definitions[3].key = sampleKey;
+    definitions[3].category_key = "audio";
+    definitions[3].desc = "Sample rate";
+    definitions[3].values[0] = {"44100", "44.1 kHz"};
+    definitions[3].values[1] = {"48000", "48 kHz"};
+    definitions[3].default_value = "48000";
+    definitions[4].key = depthKey;
+    definitions[4].values[0] = {"enabled", nullptr};
+    definitions[4].values[1] = {"disabled", nullptr};
+    definitions[4].default_value = "enabled";
     struct retro_core_options_v2 options = {nullptr, definitions};
     assert(environment(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2, &options));
     translated[0] = 'T' + 1;
@@ -75,6 +88,12 @@ bool retro_load_game(const retro_game_info *game) {
     ticks = 0;
     variableUpdate = false;
     helpOptions(false);
+    // The core reads these during boot; setting the option after open won't work.
+    retro_variable samplerate = {sampleKey, nullptr};
+    assert(environment(RETRO_ENVIRONMENT_GET_VARIABLE, &samplerate));
+    rate = strcmp(samplerate.value, "44100") == 0 ? 44100 : 48000;
+    retro_variable crcOverride = {"fbneo-allow-patched-romsets", nullptr};
+    assert(environment(RETRO_ENVIRONMENT_GET_VARIABLE, &crcOverride) && strcmp(crcOverride.value, "disabled") == 0);
     struct retro_core_option_display hidden = {hiddenKey, false};
     assert(environment(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY, &hidden));
     rgb565 = strcmp(game->path, "/rgb565.zip") == 0;
@@ -86,7 +105,7 @@ bool retro_load_game(const retro_game_info *game) {
     return true;
 }
 void retro_get_system_av_info(retro_system_av_info *av) {
-    *av = {{2, 1, 2, 1, 0.75f}, {59.9, 48000.0}};
+    *av = {{2, 1, 2, 1, 0.75f}, {59.9, static_cast<double>(rate)}};
 }
 void retro_unload_game() { assert(running && active); running = false; }
 void retro_run() {
@@ -142,7 +161,11 @@ int main() {
         assert(arcade::open(rgb16 ? "/rgb565.zip" : "/rgb32.zip", "/sys", "/save") == nullptr);
         assert(arcade::open("/another.zip", "/sys", "/save"));
         assert(arcade::fps() == 59.9 && arcade::sampleRate() == 48000);
-        assert(arcade::options().size() == 2);
+        assert(arcade::options().size() == 4);
+        const auto &depth = arcade::options().back();
+        assert(depth.bootOnly && depth.selected == 1 && depth.defaultChoice == 1);
+        retro_variable color = {depthKey, nullptr};
+        assert(environment(RETRO_ENVIRONMENT_GET_VARIABLE, &color) && strcmp(color.value, "disabled") == 0);
         const auto &first = arcade::options()[0];
         assert(first.visible && first.title == "Test memory write" && first.choices[0].label == "Default");
         assert(!arcade::setOption(hiddenKey, 1) && !arcade::setOption(ignoredKey, 0));
@@ -176,10 +199,29 @@ int main() {
         arcade::close();
         assert(!arcade::step(0) && arcade::options().empty());
     }
-    assert(arcade::open("/link.zip", "/sys", "/save", false, true) == nullptr);
+    constexpr char good[] = "fbneo-samplerate=44100\n";
+    assert(!arcade::open("/rgb32.zip", "/sys", "/save", false, false, good));
+    assert(arcade::sampleRate() == 44100 && arcade::options()[2].bootOnly);
+    assert(arcade::options()[2].selected == 0 && arcade::options()[2].defaultChoice == 1);
+    assert(!arcade::setOption(sampleKey, 1)); // Reopen is required.
+    retro_variable liveSet = {sampleKey, "48000"};
+    assert(environment(RETRO_ENVIRONMENT_SET_VARIABLE, &liveSet));
+    assert(arcade::options()[2].selected == 0);
+    assert(arcade::reset() && arcade::sampleRate() == 44100 && arcade::options()[2].selected == 0);
+    arcade::close();
+    for (const char *bad : {"fbneo-allow-patched-romsets=enabled\n", "fbneo-hiscores=enabled\n",
+                            "fbneo-samplerate=44100", "fbneo-samplerate=9999\n", "fbneo-resolution=800x600\n",
+                            "fbneo-samplerate=44100\nfbneo-samplerate=48000\n"}) {
+        const char *error = arcade::open("/rgb32.zip", "/sys", "/save", false, false, bad);
+        assert(error && strstr(error, "settings") && !active && !running);
+    }
+    assert(arcade::open("/link.zip", "/sys", "/save", false, true, good) == nullptr);
+    assert(arcade::sampleRate() == 48000);
+    for (const auto &opt : arcade::options()) assert(!opt.visible);
+    assert(!arcade::setOption(cheatKey, 1));
     const int key = RETROK_RETURN;
     arcade::keyboard(&key, 1);
     assert(arcade::step(buttons)); // Local Link never forwards computer keyboard data.
     arcade::close();
-    std::puts("Engine video/audio, options, joypad and keyboard input, reset and state tests passed.");
+    std::puts("Engine AV, boot-profile whitelist/defaults/Link isolation, live options, input and state tests passed.");
 }

@@ -3,6 +3,7 @@ android/src/main/assets/game-catalog.tsv text eol=lf whitespace=-blank-at-eol li
 android/src/main/assets/nes-sets.tsv text eol=lf linguist-generated=true
 android/src/main/assets/console-sets.tsv text eol=lf linguist-generated=true
 android/third_party/hqx/* -whitespace
-android/patches/*.patch whitespace=-space-before-tab
+# Unified patches preserve upstream context, including space-prefixed blank lines.
+android/patches/*.patch whitespace=-space-before-tab,-blank-at-eol,-blank-at-eof
 # Keep the upstream license byte-for-byte, including its original encoding/whitespace.
 LICENSES/FBNeo-LICENSE.txt -text -whitespace

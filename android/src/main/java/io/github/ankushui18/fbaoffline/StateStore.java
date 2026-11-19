@@ -15,20 +15,23 @@ import java.security.MessageDigest;
 import java.util.Arrays;
 import java.util.zip.CRC32;
 
-/** Atomic, versioned private state slots. A state is valid only for the same ROM bytes and core pin. */
+/** Atomic private slots bound to the ROM, variant, core pin and boot settings. */
 final class StateStore {
-    private static final String FORMAT = "FBA1:2da48555c13ce5d011edf2d6ec829b7393c070af";
+    private static final String PIN = "2da48555c13ce5d011edf2d6ec829b7393c070af";
+    private static final String FORMAT = "FBA1:" + PIN, PROFILE_FORMAT = "FBA2:" + PIN;
     static final int SLOTS = 6, MAX_BYTES = 48 * 1024 * 1024;
     static final long MAX_FILE_BYTES = MAX_BYTES + 128L;
     private final File rom, slots;
-    private final String variant;
+    private final String variant, profile;
     private byte[] fingerprint;
 
     StateStore(File root, File rom) { this(root, rom, null); }
+    StateStore(File root, File rom, String variant) { this(root, rom, variant, ""); }
 
-    StateStore(File root, File rom, String variant) {
+    StateStore(File root, File rom, String variant, String profile) {
         this.rom = rom;
         this.variant = variant;
+        this.profile = profile;
         File folder = new File(root, rom.getName());
         slots = variant == null ? folder : new File(folder, "ips/" + variant);
     }
@@ -77,8 +80,8 @@ final class StateStore {
         try {
             try (DataOutputStream out = new DataOutputStream(new BufferedOutputStream(Files.newOutputStream(tmp)))) {
                 if (preface != null) preface.write(out);
-                out.writeUTF(FORMAT);
-                out.write(romFingerprint());
+                out.writeUTF(profile.isEmpty() ? FORMAT : PROFILE_FORMAT);
+                out.write(snapshotFingerprint());
                 out.writeInt(state.length);
                 out.writeInt(crc(state));
                 out.write(state);
@@ -96,7 +99,12 @@ final class StateStore {
 
     byte[] readSnapshot(DataInputStream in, long fileBytes) throws IOException {
         Header header = new Header(in);
-        if (!Arrays.equals(header.fingerprint, romFingerprint())) throw new IOException("This state belongs to a different ROM revision.");
+        boolean customized = !profile.isEmpty();
+        if (header.profiled != customized || !Arrays.equals(header.fingerprint, snapshotFingerprint())) {
+            throw new IOException(header.profiled || customized
+                    ? "This state needs the same ROM revision and FBNeo settings used when it was saved."
+                    : "This state belongs to a different ROM revision.");
+        }
         if (header.length > fileBytes) throw new IOException("Invalid state length.");
         byte[] data = new byte[header.length];
         in.readFully(data);
@@ -130,9 +138,12 @@ final class StateStore {
     private static final class Header {
         final byte[] fingerprint = new byte[32];
         final int length, checksum;
+        final boolean profiled;
 
         Header(DataInputStream in) throws IOException {
-            if (!FORMAT.equals(in.readUTF())) throw new IOException("This state needs a different FBNeo build.");
+            String format = in.readUTF();
+            profiled = PROFILE_FORMAT.equals(format);
+            if (!profiled && !FORMAT.equals(format)) throw new IOException("This state needs a different FBNeo build.");
             in.readFully(fingerprint);
             length = in.readInt();
             checksum = in.readInt();
@@ -150,13 +161,18 @@ final class StateStore {
         Files.deleteIfExists(labelFile(number).toPath());
     }
 
-    private byte[] romFingerprint() throws IOException {
+    private byte[] snapshotFingerprint() throws IOException {
         if (fingerprint != null) return fingerprint;
         byte[] base = LocalFiles.hash(rom, RomStore.MAX_BYTES);
-        if (variant == null) return fingerprint = base; // Preserve v0.3 state compatibility.
+        if (variant != null) {
+            MessageDigest digest = LocalFiles.sha256();
+            digest.update(base);
+            base = digest.digest(variant.getBytes(StandardCharsets.US_ASCII));
+        }
+        if (profile.isEmpty()) return fingerprint = base; // Preserve the original plain and IPS fingerprints.
         MessageDigest digest = LocalFiles.sha256();
         digest.update(base);
-        return fingerprint = digest.digest(variant.getBytes(StandardCharsets.US_ASCII));
+        return fingerprint = digest.digest(profile.getBytes(StandardCharsets.US_ASCII));
     }
 
     private static int crc(byte[] state) {

@@ -123,7 +123,13 @@ def make(index, output):
     pack_into(">II", data, 0, 0x00ffff00, 0x00000200)
     data[0x100:0x110] = b"SEGA MEGA DRIVE "
     data[0x1f0:0x1f3] = b"U  "
-    data[0x200:0x202] = bytes.fromhex("60 FE")  # 68000: branch to itself
+    code = bytes.fromhex('''
+        23FC C0DEF00D 00FF0010
+        52B9 00FF0014
+        13F9 00A10003 00FF0018
+        60EE
+    ''')  # 68000: marker, count loops and mirror the P1 direction bits to RAM.
+    data[0x200:0x200+len(code)] = code
     (output / "Genesis cartridge.bin").write_bytes(fit_checksum(data, crc))
 
     data, crc = rom("sms", "alexkidd")

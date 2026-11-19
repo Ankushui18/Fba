@@ -35,6 +35,50 @@ static int value(const arcade::Option &opt, const char *name) {
 
 static unsigned red(unsigned x) { return arcade::video().rgba[x] & 255; }
 
+static std::vector<int16_t> captureAudio(unsigned &draws) {
+    // FBNeo can discard the first video update after allocating the framebuffer.
+    for (int i = 0; i < 3; i++) assert(arcade::step(0));
+    draws = 0;
+    std::vector<int16_t> samples;
+    for (int step = 0; step < 12; step++) {
+        assert(arcade::step(0));
+        draws += arcade::videoUpdated();
+        const auto pcm = arcade::audio();
+        samples.insert(samples.end(), pcm.pcm, pcm.pcm + pcm.samples);
+    }
+    assert(std::any_of(samples.begin(), samples.end(), [](int16_t n) { return n != 0; }));
+    return samples;
+}
+
+static size_t levels(std::vector<int16_t> samples) {
+    std::sort(samples.begin(), samples.end());
+    return std::unique(samples.begin(), samples.end()) - samples.begin();
+}
+
+static void probeVideoAudio(const char *rom, const char *system) {
+    unsigned draws;
+    assert(!arcade::open(rom, system, system));
+    const auto plain = captureAudio(draws);
+    assert(draws == 12);
+    const unsigned color565 = red(0);
+    arcade::close();
+    constexpr char tuned[] = "fbneo-allow-depth-32=enabled\nfbneo-fixed-frameskip=2\nfbneo-lowpass-filter=enabled\n";
+    assert(!arcade::open(rom, system, system, false, false, tuned));
+    const auto changed = captureAudio(draws);
+    assert(draws == 4 && changed.size() == plain.size());
+    assert(red(0) != color565 && red(0) == 0x22);
+    // Smoothing the synthetic square wave changes its shape, not just its phase.
+    const auto rawLevels = levels(plain);
+    assert(levels(changed) > rawLevels * 2);
+    assert(arcade::reset());
+    assert(captureAudio(draws).size() == plain.size() && draws == 4);
+    arcade::close();
+    assert(!arcade::open(rom, system, system, false, true, tuned));
+    assert(levels(captureAudio(draws)) == rawLevels && draws == 12 && red(0) == color565);
+    arcade::close();
+    std::puts("Gridlee boot options: 32-bit color, 4 draws/12 steps with all PCM, low-pass output and Link defaults passed.");
+}
+
 static void probeBoard(const char *rom, const char *privateDir) {
     // A synthetic program on the real Gridlee driver exercises end-to-end inputs and core options.
     if (const char *err = arcade::open(rom, privateDir, privateDir)) {
@@ -108,6 +152,7 @@ int main(int argc, char **argv) {
         assert(!arcade::step(0));
     }
     probeBoard(argv[4], argv[1]);
+    probeVideoAudio(argv[4], argv[1]);
     if (argc == 6) {
         if (const char *err = arcade::open(argv[5], argv[1], argv[1])) {
             std::fprintf(stderr, "%s\n", err);

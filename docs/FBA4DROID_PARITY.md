@@ -1,5 +1,9 @@
 # FBA4droid 1.77 parity check
 
+For the baseline and later work, see the [0.5.8 compatibility audit](COMPATIBILITY_0.5.8.md)
+and [0.5.9 FBNeo settings](FBNEO_SETTINGS.md). This page preserves the older
+comparison and the supported legacy IPS format.
+
 This compares the supplied `fba4droid_18644.apk` (SHA-256
 `9099a973c4bab3c8634583e5d3630f8f0642d7d3c993e698e6ea64120f36f775`,
 `com.joyemu.fbaapp` 1.77/20200306) with FBA Arcade Recovery 0.4.0 and 0.5.0.

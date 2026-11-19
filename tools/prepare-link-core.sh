@@ -7,6 +7,7 @@ copy=${2:?Pass the build directory for FBNeo Link}
 rev=2da48555c13ce5d011edf2d6ec829b7393c070af
 link_patch="$root/android/patches/fbneo-lockstep.patch"
 session_patch="$root/android/patches/fbneo-session.patch"
+hiscore_patch="$root/android/patches/fbneo-hiscore.patch"
 [[ $(git -C "$core" rev-parse HEAD) == "$rev" && -z $(git -C "$core" status --porcelain) ]] || { echo "Need the clean FBNeo pin $rev" >&2; exit 1; }
 if [[ ! -d $copy/.git ]]; then
   mkdir -p "$(dirname -- "$copy")"
@@ -24,8 +25,11 @@ elif core_diff | cmp -s - "$link_patch"; then
   git -C "$copy" apply -R "$link_patch"
   git -C "$copy" apply "$session_patch"
 fi
-# Only the versioned, reproducible session patch may differ from the pinned core.
-if ! core_diff | cmp -s - "$session_patch"; then
+if core_diff | cmp -s - "$session_patch"; then
+  git -C "$copy" apply "$hiscore_patch"
+fi
+# Only these versioned patches may differ from the pinned core.
+if ! core_diff | cmp -s - <(cat "$hiscore_patch" "$session_patch"); then
   echo "Unexpected local changes in Link core: $copy" >&2
   exit 1
 fi

@@ -4,6 +4,8 @@
 #include <string.h>
 #include <algorithm>
 #include <cmath>
+#include <map>
+#include <string_view>
 #include "libretro.h"
 
 // The Java frontend calls all core APIs on its one emulation thread.
@@ -15,6 +17,7 @@ char romPath[256], systemDir[4096], saveDir[4096];
 bool initialized, loaded, driverStarted, opening, failed, shutdownRequested;
 char errorText[256];
 unsigned width, height, rotation;
+bool freshVideo;
 float displayAspect;
 double coreFps, coreSampleRate;
 retro_pixel_format pixelFormat;
@@ -24,6 +27,51 @@ constexpr size_t kMaxState = 48u * 1024 * 1024;
 std::vector<arcade::Option> coreOptions;
 bool optionsDirty, usePatchedRom, localLink;
 unsigned inputMasks[4];
+
+struct BootRule { const char *key, *baseline, *section; };
+// The pinned core's effective 0.5.8 values, not always its advertised option defaults.
+// Supply them even in Link to prevent settings from leaking across in-process launches.
+constexpr BootRule bootRules[] = {
+    {"fbneo-cpu-speed-adjust", "100%", "Machine"},
+    {"fbneo-hiscores", "disabled", "Machine"},
+    {"fbneo-force-60hz", "disabled", "Video"},
+    {"fbneo-allow-depth-32", "disabled", "Video"},
+    {"fbneo-fixed-frameskip", "0", "Video"},
+    {"fbneo-samplerate", "48000", "Audio"},
+    {"fbneo-sample-interpolation", "2-point 1st order", "Audio"},
+    {"fbneo-fm-interpolation", "disabled", "Audio"},
+    {"fbneo-lowpass-filter", "disabled", "Audio"},
+    {"fbneo-socd", "3", "Input"},
+};
+std::map<std::string, std::string> bootProfile;
+
+const BootRule *bootRule(std::string_view key) {
+    for (const auto &rule : bootRules) if (key == rule.key) return &rule;
+    return nullptr;
+}
+
+bool readProfile(const char *text, std::map<std::string, std::string> &parsed) {
+    constexpr size_t limit = 2048;
+    if (!text) return true;
+    const size_t length = strnlen(text, limit + 1);
+    if (length > limit) return false;
+    std::string_view remaining(text, length);
+    std::string_view previous;
+    while (!remaining.empty()) {
+        const size_t end = remaining.find('\n');
+        if (end == std::string_view::npos) return false;
+        const auto line = remaining.substr(0, end);
+        const size_t split = line.find('=');
+        if (split == std::string_view::npos) return false;
+        const auto key = line.substr(0, split), value = line.substr(split + 1);
+        if (!bootRule(key) || key <= previous || value.empty() || value.size() > 64 ||
+                !std::all_of(value.begin(), value.end(), [](char c) { return c >= ' ' && c <= '~' && c != '='; })) return false;
+        parsed.emplace(key, value);
+        previous = key;
+        remaining.remove_prefix(end + 1);
+    }
+    return true;
+}
 
 arcade::Option *findOption(const char *key) {
     if (!key) return nullptr;
@@ -44,30 +92,43 @@ void captureOptions(const retro_core_options_v2 &published) {
     std::vector<arcade::Option> next;
     for (const auto *entry = published.definitions; entry->key && next.size() < 1024; ++entry) {
         const char *category = entry->category_key ? entry->category_key : "";
-        const bool visual = !strcmp(entry->key, "fbneo-vertical-mode") || !strcmp(entry->key, "fbneo-diagnostic-input");
-        if (!visual && strcmp(category, "dipswitch") && strcmp(category, "cheat")) continue;
+        const auto *rule = bootRule(entry->key);
+        const bool vertical = !strcmp(entry->key, "fbneo-vertical-mode");
+        const bool diagnostic = !strcmp(entry->key, "fbneo-diagnostic-input");
+        const bool machine = vertical || diagnostic;
+        if (!rule && !machine && strcmp(category, "dipswitch") && strcmp(category, "cheat")) continue;
+        const char *baseline = rule ? rule->baseline : vertical ? "disabled" : diagnostic ? "None" : entry->default_value;
+        const auto requested = rule ? bootProfile.find(entry->key) : bootProfile.end();
         arcade::Option option = {};
         option.key = entry->key;
-        option.category = visual ? "machine" : category;
-        option.title = entry->desc_categorized ? entry->desc_categorized : entry->desc ? entry->desc : entry->key;
+        option.category = rule ? rule->section : machine ? "machine" : category;
+        const char *description = !rule && entry->desc_categorized ? entry->desc_categorized : entry->desc;
+        option.title = description ? description : entry->key;
         if (entry->info) option.info = entry->info;
-        option.visible = true;
+        option.visible = !localLink;
+        option.bootOnly = rule != nullptr;
+        int chosen = -1, stock = -1;
         for (size_t j = 0; j < RETRO_NUM_CORE_OPTION_VALUES_MAX && entry->values[j].value; j++) {
             const auto &value = entry->values[j];
-            if (entry->default_value && !strcmp(entry->default_value, value.value)) option.defaultChoice = j;
+            if (baseline && !strcmp(baseline, value.value)) stock = static_cast<int>(j);
+            if (requested != bootProfile.end() && requested->second == value.value) chosen = static_cast<int>(option.choices.size());
             option.choices.push_back({value.value, value.label ? value.label : value.value});
         }
-        if (option.choices.empty()) continue;
-        option.selected = option.defaultChoice;
-        if (const auto *previous = findOption(entry->key)) {
-            option.visible = previous->visible;
-            if (previous->overridden) {
-                const auto &chosen = previous->choices[previous->selected].value;
-                for (unsigned j = 0; j < option.choices.size(); j++) {
-                    if (option.choices[j].value == chosen) {
-                        option.selected = j;
-                        option.overridden = true;
-                        break;
+        if (option.choices.empty() || (rule && stock < 0)) continue;
+        option.defaultChoice = stock >= 0 ? static_cast<unsigned>(stock) : 0;
+        option.selected = chosen >= 0 ? static_cast<unsigned>(chosen) : option.defaultChoice;
+        option.overridden = (rule || machine) && stock >= 0;
+        if (!rule) {
+            if (const auto *previous = findOption(entry->key)) {
+                option.visible = previous->visible && !localLink;
+                if (previous->overridden) {
+                    const auto &value = previous->choices[previous->selected].value;
+                    for (unsigned j = 0; j < option.choices.size(); j++) {
+                        if (option.choices[j].value == value) {
+                            option.selected = j;
+                            option.overridden = true;
+                            break;
+                        }
                     }
                 }
             }
@@ -139,7 +200,7 @@ bool environment(unsigned cmd, void *data) {
             return true;
         case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY: {
             const auto *display = static_cast<const retro_core_option_display *>(data);
-            if (auto *option = findOption(display->key)) option->visible = display->visible;
+            if (auto *option = findOption(display->key)) option->visible = display->visible && !localLink;
             return true;
         }
         case RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS: {
@@ -165,7 +226,7 @@ bool environment(unsigned cmd, void *data) {
             auto *option = findOption(var->key);
             // FBNeo uses this to restore safe values at boot or cabinet reset.
             if (!var->value) return false;
-            if (!option) return true; // Ignore frontend-unsupported core features.
+            if (!option || option->bootOnly || localLink) return true; // No live changes to boot options or Link.
             for (unsigned i = 0; i < option->choices.size(); i++)
                 if (option->choices[i].value == var->value) return selectOption(*option, i);
             return false;
@@ -210,6 +271,7 @@ void videoRefresh(const void *data, unsigned w, unsigned h, size_t pitch) {
     }
     width = w;
     height = h;
+    freshVideo = true;
     const auto *src = static_cast<const uint8_t *>(data);
     for (unsigned y = 0; y < h; y++, src += pitch) {
         uint32_t *dst = frame + y * w;
@@ -276,16 +338,21 @@ void close() {
     if (initialized) retro_deinit();
     initialized = loaded = false;
     coreOptions.clear();
-    optionsDirty = false;
+    bootProfile.clear();
+    optionsDirty = freshVideo = false;
 }
 
-const char *open(const char *rom, const char *system, const char *save, bool patched, bool linked) {
+const char *open(const char *rom, const char *system, const char *save, bool patched, bool linked, const char *profile) {
     if (initialized) return "An arcade session is already open.";
     if (!readPath(rom, romPath) || !readPath(system, systemDir) || !readPath(save, saveDir)) {
         return "The local file path is invalid or too long.";
     }
     if (retro_api_version() != RETRO_API_VERSION) return "Incompatible FBNeo core.";
+    std::map<std::string, std::string> parsed;
+    if (!linked && !readProfile(profile, parsed)) return "Invalid saved FBNeo settings. Reset them from the game's library menu.";
+    bootProfile = std::move(parsed);
     width = height = rotation = 0;
+    freshVideo = false;
     memset(inputMasks, 0, sizeof(inputMasks));
     usePatchedRom = patched;
     localLink = linked;
@@ -316,6 +383,13 @@ const char *open(const char *rom, const char *system, const char *save, bool pat
         return errorText[0] ? errorText :
             "FBNeo couldn't start this set. Use a supported FBNeo ZIP or matching console ROM, with its parent and BIOS ZIPs if required.";
     }
+    for (const auto &[key, value] : bootProfile) {
+        const auto *option = findOption(key.c_str());
+        if (!option || !option->visible || !option->bootOnly || option->choices[option->selected].value != value) {
+            close();
+            return "A saved FBNeo choice is unavailable for this game. Reset its FBNeo settings from the library.";
+        }
+    }
     retro_system_av_info info = {};
     retro_get_system_av_info(&info);
     updateTiming(info);
@@ -326,6 +400,7 @@ bool step(uint64_t input) {
     if (!loaded) return false;
     buttons = input;
     audioSize = 0;
+    freshVideo = false;
     retro_run();
     return !shutdownRequested && !failed;
 }
@@ -342,6 +417,7 @@ bool reset() {
     if (!loaded || failed || shutdownRequested) return false;
     buttons = 0;
     audioSize = 0;
+    freshVideo = false;
     retro_reset();
     return !failed && !shutdownRequested;
 }
@@ -364,7 +440,8 @@ const std::vector<Option> &options() { return coreOptions; }
 
 bool setOption(const char *key, int choice) {
     auto *option = findOption(key);
-    return loaded && option && option->visible && choice >= 0 && selectOption(*option, static_cast<unsigned>(choice));
+    return loaded && !localLink && option && !option->bootOnly && option->visible && choice >= 0 &&
+        selectOption(*option, static_cast<unsigned>(choice));
 }
 
 unsigned inputMask(unsigned port) { return port < 4 ? inputMasks[port] : 0; }
@@ -381,6 +458,7 @@ uint64_t linkCheckpoint() {
 }
 
 Video video() { return {frame, width, height, rotation, displayAspect}; }
+bool videoUpdated() { return freshVideo; }
 Audio audio() { return {::audio, audioSize}; }
 double fps() { return coreFps; }
 int sampleRate() {

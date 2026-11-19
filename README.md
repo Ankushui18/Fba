@@ -14,20 +14,22 @@ for SNES, Sega Genesis / Mega Drive, GBA and other supported systems.
 
 ## Install and play
 
-[**Download FBA Arcade 0.5.8 Preview APK**](https://github.com/Ankushui18/Fba/raw/795f9695b65336d84d47838c306f9be7640d84c5/artifacts/fba-arcade-0.5.8-preview-link-arm64-v8a-test.apk)
+[**Download FBA Arcade 0.5.9 Preview APK**](artifacts/fba-arcade-0.5.9-preview-link-arm64-v8a-test.apk)
 — signed, 64-bit ARM, **Android 8 or later**. One APK includes offline solo play,
 local Wi-Fi/Bluetooth arcade multiplayer, [Quick Resume](#quick-resume), and
 [Backup & restore](#back-up-saves-and-settings). There is no separate Offline build.
 
-Download the `.apk`, not the [SHA-256 checksum](artifacts/FBA-Arcade-0.5.8-SHA256SUMS.txt).
-**Install over Recovery Preview 0.5.1–0.5.7 without uninstalling.** The app ID
+Download the `.apk`, not the [SHA-256 checksum](artifacts/FBA-Arcade-0.5.9-SHA256SUMS.txt).
+**Install over Recovery Preview 0.5.1–0.5.8 without uninstalling.** The app ID
 and signer match, so the library, saves and settings stay in place. Use **Add
 games** again for files that were previously skipped.
 
 This is not an update for the original **FBA Arcade Recovery** or **FBA4droid**
 (`com.joyemu.fbaapp`). Leave those installed if you need their data. The backup
 feature only reads data from the FBA Arcade install you're using. See the
-[FBA4droid 1.77 comparison](docs/FBA4DROID_PARITY.md) for compatibility differences.
+[0.5.8 compatibility audit](docs/COMPATIBILITY_0.5.8.md) for the baseline against
+FBA4droid and FinalBurn Alpha. See [what 0.5.9 adds and verifies](docs/FBNEO_SETTINGS.md)
+for current settings behavior and remaining gaps.
 
 1. Tap **Add games** on the welcome screen (or **+ Add** once games are in your
    library). Choose your `.nes` or other game file. In Android's **Recent**
@@ -64,6 +66,7 @@ CD images (Neo Geo CD, PCE CD and Sega CD) are not imported by this build.
 | **Game row ⋮ → IPS patches** | Import a single `.ips` by chip, browse a legacy `.dat` folder for simple multi-file packs, or **Apply selected** profiles together. Each saved variant has its own preview, states and battery storage. The source ZIP is unchanged. |
 | **Game row ⋮ → Cheat files** | Import a legacy `.ini`, select a cheat ZIP containing `<set>.ini` at its top level, or paste INI text. A compatible custom list replaces the bundled list for that exact ZIP revision; **Restore built-in cheats** reverses it. |
 | **Pause → Cheats / DIP switches** | Choose a cheat or cabinet option, then **Apply → Resume**. Cheats start off and restart clears active choices. Some DIP changes need restart. Cheats may already have changed game memory when turned off. |
+| **Pause → FBNeo settings** | Per-game CPU clock, timing, video depth, core frameskip, audio tuning, direction priority and high scores where supported. Save, exit, then start normally for changes to apply. These settings do not apply to Link or IPS variants. |
 | **Settings → Virtual controls** or **Pause → Controls** | Four built-in skins. From library Settings, **Controller skin → Import folder** copies legacy PNG frames from the chosen skin folder. Apply D-pad or round stick art. Edit layouts independently in portrait and landscape; Auto uses digital button mappings, Compact uses smaller fixed positions. |
 | **Virtual controls / Physical keys** | Independent joystick and button touch expansion under **Edit layout → Options**, plus opacity, scale, dead zone, animation and haptics. Set combinations on A–F or Combo 1–4; bind the latter under **Physical keys → EXT1–4**. Held-button repeat starts after a short hold. Up to four local digital input ports. |
 | **Pause → Display** | Fit/fill/aspect ratios, integer scale, **Original size (1×)**, orientation, fullscreen portrait, sharp/bilinear or HQ2x/HQ3x/HQ4x, render frameskip, game/video FPS and sound. Optional GPU canvas takes effect next launch. |
@@ -72,6 +75,30 @@ CD images (Neo Geo CD, PCE CD and Sega CD) are not imported by this build.
 The library gear edits global defaults. In a game settings panel, choose
 **For this game** to customize it or **Use global** to clear overrides. The
 round stick maps digital directions, not analog trackball or lightgun input.
+
+### FBNeo settings
+
+Start a regular solo game, open **Pause → FBNeo settings**, choose options, and
+tap **Save**. Exit the game and tap its library row to apply changes. **Restart**
+inside the game resets the running driver, not its boot settings. Some choices
+only affect compatible hardware (for example FM interpolation or CPU clock).
+Core frameskip skips draws inside FBNeo; **Display → Frameskip** skips only
+presentation. Leave either off before comparing performance and smoothness.
+
+Default settings still load existing Preview states. If you change FBNeo settings,
+manual states and Quick Resume require the same choices used when saved. You can
+restore defaults without deleting states from **Game row ⋮ → Reset FBNeo settings**.
+[Details and test results](docs/FBNEO_SETTINGS.md).
+
+### High score setup
+
+Download the pinned [hiscore.dat](https://github.com/libretro/FBNeo/raw/2da48555c13ce5d011edf2d6ec829b7393c070af/metadata/hiscore.dat)
+from FBNeo. In library **Settings → High score data**, choose that unmodified
+file. The app checks its size and SHA-256 before copying it into private storage.
+In a supported game, turn on **Pause → FBNeo settings → Save high scores**,
+save the settings, then exit and reopen. Obtain a score and use **Exit game**
+so FBNeo can save it. The driver must have a compatible table in the DAT.
+The `.dat` is optional, isn't a ROM or BIOS, and is not bundled or downloaded by the app.
 
 ### Quick Resume
 
@@ -82,7 +109,7 @@ round stick maps digital directions, not analog trackball or lightgun input.
    do not save a checkpoint.
 3. Tap **Continue** at the top of the games list to load the last successful
    solo checkpoint. Tapping a game row still starts it normally. Continue needs
-   the same ROM ZIP revision and IPS variant if you used patches.
+   the same ROM ZIP revision and IPS variant (if used) and the same FBNeo settings.
 
 There is one automatic slot, separate from all six manual slots. Each successful
 solo exit replaces that auto-save. If capture fails, you can stay paused or exit
@@ -104,13 +131,13 @@ you want that progress included in a portable ZIP.
 3. Re-import the **same ROM ZIPs** (and required parent/BIOS files) separately.
    For an IPS save, recreate the variant with the same files in the same apply
    order. Load from **Pause → Load** or **Game row ⋮ → Save states** (under the
-   IPS profile for a patched save). Save states still check the ROM/variant
-   fingerprint and FBNeo version at load time.
+   IPS profile for a patched save). Save states check the ROM/variant, FBNeo
+   version and boot settings at load time.
 
 The ZIP includes save states and slot names, plus portable global and per-game
 settings (including display, audio, controller layouts and bindings, built-in
-skin choices, and library display preferences). It does **not** include ROMs,
-BIOS, IPS files, in-game battery/memory-card saves, high scores, previews or
+skins, library preferences and FBNeo boot profiles). It does **not** include ROMs,
+BIOS, IPS files, in-game battery/memory-card saves, score files or their DAT, previews or
 screenshots, custom skins/notes/cheats, favorites/history, or Android folder
 permissions. Keep your original files separately and reselect folders as needed.
 
@@ -187,22 +214,22 @@ export ANDROID_SDK_ROOT=/path/to/android-sdk
 export ANDROID_NDK_HOME="$ANDROID_SDK_ROOT/ndk/28.2.13676358"
 ./tools/build-apk.sh
 ./tools/test.sh
-./tools/verify-apk.sh artifacts/fba-arcade-0.5.8-link-arm64-v8a-test.apk
+./tools/verify-apk.sh artifacts/fba-arcade-0.5.9-link-arm64-v8a-test.apk
 ```
 
 No Gradle/Maven dependencies or legacy APK files are needed. `tools/build-core.sh`
 fetches and checks the [FBNeo Libretro pin `2da48555`](https://github.com/libretro/FBNeo/tree/2da48555c13ce5d011edf2d6ec829b7393c070af).
 Set `FBNEO_SOURCE` to a clean checkout of that pin to build without fetching the
-core. The build always includes Link and applies the [recorded session patch](android/patches/fbneo-session.patch)
-in a separate source directory. `ANDROID_PLATFORM`,
+core. The build always includes Link and applies the [session patch](android/patches/fbneo-session.patch)
+and [score file read check](android/patches/fbneo-hiscore.patch) in a separate source directory. `ANDROID_PLATFORM`,
 `ANDROID_BUILD_TOOLS`, `JOBS` and `APK_OUTPUT` are optional build overrides.
 `ANDROID_ABIS=x86_64` builds an x86-64 APK. To audit an older permission-free
 Offline APK, use `./tools/verify-apk.sh OLD.apk --legacy-offline`.
 See [Android acceptance checks](docs/ANDROID_SMOKE.md).
 
 For real-core Linux smoke tests, build the patched host core as shown in
-[Link setup](docs/LINK_PLAY.md#host-test), then run `tools/smoke-core.sh` and
-`tools/smoke-console.sh` with that `.so`. They use temporary synthetic fixtures,
+[Link setup](docs/LINK_PLAY.md#host-test), then run `tools/smoke-core.sh`,
+`tools/smoke-console.sh` and `tools/smoke-hiscore.sh` with that `.so`. They use temporary synthetic fixtures,
 not the original games. A compatible local arcade ZIP or the verified NES
 alternate dump can optionally be tested by the respective script.
 

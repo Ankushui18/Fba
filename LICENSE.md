@@ -22,18 +22,19 @@ and publish any changes you make to the FBNeo source. Do not distribute FBNeo
 with ROM images unless you have the legal right to distribute them. This is a
 summary; the full upstream text and each component's own license control.
 
-### Corresponding source for Preview 0.5.8
+### Corresponding source for Preview 0.5.9
 
 | Component | Exact source |
 | --- | --- |
 | FBNeo 1.0.0.03 (Libretro port) | [Upstream snapshot `2da48555`](https://github.com/libretro/FBNeo/tree/2da48555c13ce5d011edf2d6ec829b7393c070af) |
-| Changes to FBNeo in this APK | [Published `fbneo-session.patch`](https://github.com/Ankushui18/Fba/blob/795f9695b65336d84d47838c306f9be7640d84c5/android/patches/fbneo-session.patch): deterministic startup for Link and safe driver switching |
-| Android frontend, build scripts and bundled HQx source | [FBA Arcade build revision `795f969`](https://github.com/Ankushui18/Fba/tree/795f9695b65336d84d47838c306f9be7640d84c5) and [build instructions](README.md#build-and-verify) |
+| Changes to FBNeo in this APK | [`fbneo-session.patch`](android/patches/fbneo-session.patch): deterministic startup for Link and safe driver switching; [`fbneo-hiscore.patch`](android/patches/fbneo-hiscore.patch): ignore incomplete or mismatched score files |
+| Android frontend, build scripts and bundled HQx source | This source tree, `android/src`, `tools` and `android/third_party/hqx`; see [build instructions](README.md#build-and-verify) |
 
-The build scripts fetch the pinned core and apply the patch to a separate
-checkout. The APK includes `assets/CORE-SOURCE.txt`, the full
-`assets/FBNeo-LICENSE.txt`, `assets/FBNeo-SESSION.patch` and the other bundled
-notices under `assets/licenses/`. Use the source revision and patch associated
+The build scripts apply these patches to a separate checkout. The APK includes
+`assets/CORE-SOURCE.txt`, the unmodified `assets/FBNeo-LICENSE.txt`,
+`assets/FBNeo-SESSION.patch`, `assets/FBNeo-HISCORE.patch` and the other notices
+under `assets/licenses/`. [Preview 0.5.8's corresponding source](https://github.com/Ankushui18/Fba/tree/795f9695b65336d84d47838c306f9be7640d84c5)
+uses the same pin but only the session patch. Use the source and patch associated
 with each older APK rather than assuming it was built from the current tree.
 
 ## Other components and third-party assets

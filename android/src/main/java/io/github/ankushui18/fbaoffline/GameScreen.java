@@ -15,7 +15,7 @@ import android.widget.TextView;
 
 /** Black full-screen stage in landscape, with a dedicated controller dock in portrait. */
 final class GameScreen extends FrameLayout {
-    enum Action { RESUME, SAVE, LOAD, SCREENSHOT, CHEATS, DIPS, CONTROLLER, DISPLAY, KEYS, RESTART, INFO, EXIT, PLAYER }
+    enum Action { RESUME, SAVE, LOAD, SCREENSHOT, CHEATS, DIPS, CORE_SETTINGS, CONTROLLER, DISPLAY, KEYS, RESTART, INFO, EXIT, PLAYER }
     interface Actions { void invoke(Action action); }
 
     private final ArcadeUi ui;
@@ -23,14 +23,14 @@ final class GameScreen extends FrameLayout {
     private final FrameLayout menu;
     private GameSession session;
 
-    GameScreen(Context context, String name, PadArt skin, boolean touchVisible, GameLink link, Actions actions) {
+    GameScreen(Context context, String name, PadArt skin, boolean touchVisible, GameLink link, boolean original, Actions actions) {
         super(context);
         ui = new ArcadeUi(context);
         setBackgroundColor(Color.BLACK);
         stage = new Stage(context, name, skin, touchVisible, actions);
         addView(stage, new LayoutParams(-1, -1));
         if (link != null) stage.loading.setText(link.status() + "\nOpen Pause → Exit link to cancel.");
-        menu = pauseMenu(context, name, actions, link != null);
+        menu = pauseMenu(context, name, actions, link != null, original);
         addView(menu, new LayoutParams(-1, -1));
         menu.setVisibility(GONE);
         setControlsVisible(touchVisible);
@@ -99,7 +99,7 @@ final class GameScreen extends FrameLayout {
 
     void focusStage() { stage.requestFocus(); }
 
-    private FrameLayout pauseMenu(Context context, String name, Actions actions, boolean linked) {
+    private FrameLayout pauseMenu(Context context, String name, Actions actions, boolean linked, boolean original) {
         FrameLayout scrim = new FrameLayout(context);
         scrim.setBackgroundColor(0xc507111e);
         scrim.setClickable(true);
@@ -136,14 +136,18 @@ final class GameScreen extends FrameLayout {
                     new Action[]{Action.CONTROLLER, Action.DISPLAY, Action.KEYS, Action.INFO, Action.EXIT});
             return scrim;
         }
-        grid(card, actions, new String[]{"Save", "Load", "Screenshot", "Cheats", "DIP switches", "Controls", "Display", "Keys",
-                        "Restart", "Game info", "Exit game"},
+        grid(card, actions, new String[]{"Save", "Load", "Screenshot", "Cheats", "DIP switches", "Controls", "Display", "Keys", "Restart"},
                 new int[]{R.drawable.legacy_ui_menu_savestate, R.drawable.legacy_ui_menu_loadstate, R.drawable.legacy_ui_menu_screenshot,
                         R.drawable.legacy_ui_menu_cheat, R.drawable.legacy_ui_menu_dipswitch, R.drawable.legacy_ui_menu_softinput,
-                        R.drawable.legacy_ui_menu_list, R.drawable.legacy_ui_menu_keyconfig, R.drawable.legacy_ui_menu_restart,
-                        R.drawable.legacy_ui_menu_gameinfo, R.drawable.legacy_ui_menu_quit},
+                        R.drawable.legacy_ui_menu_list, R.drawable.legacy_ui_menu_keyconfig, R.drawable.legacy_ui_menu_restart},
                 new Action[]{Action.SAVE, Action.LOAD, Action.SCREENSHOT, Action.CHEATS, Action.DIPS, Action.CONTROLLER,
-                        Action.DISPLAY, Action.KEYS, Action.RESTART, Action.INFO, Action.EXIT});
+                        Action.DISPLAY, Action.KEYS, Action.RESTART});
+        if (original) grid(card, actions, new String[]{"FBNeo settings", "Game info", "Exit game"},
+                new int[]{R.drawable.ic_library_settings, R.drawable.legacy_ui_menu_gameinfo, R.drawable.legacy_ui_menu_quit},
+                new Action[]{Action.CORE_SETTINGS, Action.INFO, Action.EXIT});
+        else grid(card, actions, new String[]{"Game info", "Exit game"},
+                new int[]{R.drawable.legacy_ui_menu_gameinfo, R.drawable.legacy_ui_menu_quit},
+                new Action[]{Action.INFO, Action.EXIT});
         return scrim;
     }
 

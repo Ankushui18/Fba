@@ -45,6 +45,7 @@ final class GameSession implements Runnable {
     final PatchStore.Entry patch;
     final GameLink link;
     final boolean continuing;
+    final String bootProfile;
     private final int launchSlot;
     private final QuickResumeStore quickResume;
     private volatile int[] controls = new int[4];
@@ -64,15 +65,16 @@ final class GameSession implements Runnable {
     private volatile boolean stopping;
 
     GameSession(Context context, SurfaceHolder surface, File rom, File systemDir, File saveDir, GameCatalog catalog, File cover,
-                PatchStore.Entry patch, int launchSlot, GameLink link, boolean continuing, Callbacks callbacks) {
+                PatchStore.Entry patch, int launchSlot, GameLink link, boolean continuing, String bootProfile, Callbacks callbacks) {
         if (continuing && (link != null || launchSlot != 0)) throw new IllegalArgumentException("Quick Resume is a separate solo launch.");
         app = context.getApplicationContext();
         this.patch = patch;
         this.link = link;
         this.launchSlot = launchSlot;
         this.continuing = continuing;
+        this.bootProfile = patch == null && link == null ? bootProfile : "";
         File privateData = app.getNoBackupFilesDir();
-        states = new StateStore(new File(privateData, "states"), rom, patch == null ? null : patch.id);
+        states = new StateStore(new File(privateData, "states"), rom, patch == null ? null : patch.id, this.bootProfile);
         quickResume = new QuickResumeStore(privateData);
         this.catalog = catalog;
         this.cover = patch == null ? cover : patch.preview();
@@ -85,6 +87,7 @@ final class GameSession implements Runnable {
     }
 
     String romName() { return rom.getName(); }
+    boolean hasCoreSettings() { return link == null && patch == null; }
     File cover() { return cover; }
     int inputMask(int port) { return controls[port]; }
     void start() { WORKER.execute(this); }
@@ -211,8 +214,8 @@ final class GameSession implements Runnable {
             File system = isolated == null ? systemDir : isolated;
             Files.createDirectories(saves.toPath());
             if (stopping) return;
-            // Check the snapshot before opening the driver; a mismatched ZIP must not boot or write solo battery data.
-            byte[] resumeState = continuing ? quickResume.load(states) : null;
+            // Check the ROM, variant and profile before the driver can touch the game's persistent data.
+            byte[] launchState = continuing ? quickResume.load(states) : launchSlot > 0 ? states.load(launchSlot) : null;
             if (stopping) return;
             File launchRom = rom;
             ConsoleStore.Launch staged = null;
@@ -233,8 +236,11 @@ final class GameSession implements Runnable {
             if (link == null) try {
                 definition = GameCatalog.stageCheats(app, system, rom, staged == null ? null : staged.driver);
             } catch (IOException ignored) { /* A catalog/cache error must not block playing. */ }
+            if (bootProfile.contains(CoreProfile.HISCORES + "=enabled\n") && !HighScoreData.verified(system)) {
+                throw new IOException("High Scores needs the matching hiscore.dat. Import it in library Settings or reset this game's FBNeo settings.");
+            }
             // FBNeo reloads the INI on variable changes and reset, not just during discovery.
-            error = Core.open(launchRom.getAbsolutePath(), system.getAbsolutePath(), saves.getAbsolutePath(), patched, link != null);
+            error = Core.open(launchRom.getAbsolutePath(), system.getAbsolutePath(), saves.getAbsolutePath(), patched, link != null, bootProfile);
             if (error != null) {
                 if (staged != null) error += staged.firmwareHint;
                 return;
@@ -245,10 +251,10 @@ final class GameSession implements Runnable {
             // The pinned core publishes the real digital mappings on its first input poll.
             // Do a neutral frame before restoring a selected slot or beginning a synchronized link.
             if (Core.step(0, samples) < 0) throw new IOException("Couldn't prepare this FBNeo driver.");
-            if (resumeState != null) {
-                if (!Core.restoreState(resumeState)) throw new IOException("FBNeo couldn't restore this Quick Resume save.");
-                resumeState = null;
-            } else if (launchSlot > 0) loadSlot(launchSlot);
+            if (launchState != null && !Core.restoreState(launchState)) {
+                throw new IOException(continuing ? "FBNeo couldn't restore this Quick Resume save." : "FBNeo couldn't restore this state.");
+            }
+            launchState = null;
             int[] masks = new int[4];
             for (int i = 0; i < masks.length; i++) masks[i] = Core.inputMask(i);
             controls = masks;
@@ -264,7 +270,7 @@ final class GameSession implements Runnable {
             int audioRate = 0;
             long nextFrame = 0, tick = 0, rateStart = System.nanoTime();
             int rateFrames = 0;
-            long lastOffer = -5, lastPosted = 0, checkpoint = link == null ? 0 : Core.linkCheckpoint();
+            long lastOffer = -5, videoFrames = 0, lastPosted = 0, checkpoint = link == null ? 0 : Core.linkCheckpoint();
             boolean peerWaiting = false;
             while (!stopping) {
                 if (renderer.failed()) { error = "Couldn't draw the game on this device."; break; }
@@ -329,9 +335,13 @@ final class GameSession implements Runnable {
                 }
                 // Do not delay PCM for HQx or a busy surface. The presenter keeps only the newest
                 // queued snapshot, and a skipped draw never skips a core step or Link exchange.
-                int skip = frameSkip;
-                boolean offer = skip < 0 ? tick - lastOffer >= 5 || System.nanoTime() < nextFrame + period : tick % (skip + 1) == 0;
-                if (offer && renderer.offer(displayMode, filter)) lastOffer = tick;
+                if (Core.videoUpdated()) {
+                    // Count only produced frames: two independent skip intervals must not suppress each other forever.
+                    long frame = videoFrames++;
+                    int skip = frameSkip;
+                    boolean offer = skip < 0 ? tick - lastOffer >= 5 || System.nanoTime() < nextFrame + period : frame % (skip + 1) == 0;
+                    if (offer && renderer.offer(displayMode, filter)) lastOffer = tick;
+                }
                 rateFrames++;
                 long elapsed = System.nanoTime() - rateStart;
                 if (elapsed >= 1_000_000_000L) {

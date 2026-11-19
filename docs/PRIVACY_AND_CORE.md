@@ -54,7 +54,10 @@ APK applies the bundled [session patch](../android/patches/fbneo-session.patch).
 It enables deterministic time and random seeds before Link startup, refreshes
 the current driver's control descriptors after switching games, and prevents
 cleanup of an uninitialized driver on a missing-ROM or BIOS error. The patch
-and core licenses are bundled in the APK.
+and core licenses are bundled in the APK. Starting with 0.5.9, the
+[hiscore patch](../android/patches/fbneo-hiscore.patch) also ships with it.
+It prevents partial `.hi` files from being loaded into score memory. The app
+verifies user-selected `hiscore.dat` offline; it neither bundles it nor fetches it.
 If you have a local copy you have the right to inspect, reproduce the comparison:
 
 ```sh
@@ -196,10 +199,10 @@ flavors share their own ID and signer, so they replace each other. The signed
 versionCode (5 and 6), so 0.5.1 can update 0.5.0 or 0.4.0 Recovery without
 uninstalling.
 
-The current 0.5.8 APK uses launcher label **FBA Arcade**, version code 13,
+The current 0.5.9 APK uses launcher label **FBA Arcade**, version code 14,
 and the same app ID (`io.github.ankushui18.fbaarcade.recovery.preview`) and
 signer (SHA-256 `d8a45e30010cfbee84fef2227b3e0c98e585046658c0a0582df0845d8fd0d396`)
-as 0.5.7 through 0.5.1 Recovery Preview. It cannot update original Recovery.
+as 0.5.8 through 0.5.1 Recovery Preview. It cannot update original Recovery.
 The console importer adds no permissions or changes to the Link wire protocol.
 It wraps a recognized loose game in a private ZIP and stages the game and
 imported dependencies under the expected system folder for the duration of

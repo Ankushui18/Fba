@@ -65,7 +65,7 @@ import static io.github.ankushui18.fbaoffline.Joypad.directions;
 
 public final class MainActivity extends Activity implements GameSession.Callbacks {
     private static final int PICK_GAMES = 101, PICK_FOLDER = 102, PICK_ART = 103, EXPORT_SHOT = 104, PICK_SKIN = 105;
-    private static final int EXPORT_BACKUP = 106, RESTORE_BACKUP = 107;
+    private static final int EXPORT_BACKUP = 106, RESTORE_BACKUP = 107, PICK_HISCORE_DATA = 108;
     private static final int MAX_BATCH = 64, HISTORY_LIMIT = 24;
     private static final String RECENT_FILES = "recent_roms", FAVORITES = "favorites", QUICK_RESUME = "quick_resume_enabled";
     private static final String[] PAD_MODES = {"Custom", "Auto (game buttons)", "Compact (fixed)"};
@@ -289,7 +289,8 @@ public final class MainActivity extends Activity implements GameSession.Callback
         menu.getMenu().add(0, 8, 5, "Cheat files");
         menu.getMenu().add(0, 3, 6, "Choose thumbnail image");
         if (catalog.cover(GameCatalog.setName(file.getName())).isFile()) menu.getMenu().add(0, 4, 7, "Restore original thumbnail");
-        menu.getMenu().add(0, 5, 8, "Remove local copy");
+        if (settings.contains(CoreProfile.key(file.getName()))) menu.getMenu().add(0, 10, 8, "Reset FBNeo settings");
+        menu.getMenu().add(0, 5, 9, "Remove local copy");
         menu.setOnMenuItemClickListener(item -> {
             switch (item.getItemId()) {
                 case 1: gameInfo(file); break;
@@ -307,6 +308,7 @@ public final class MainActivity extends Activity implements GameSession.Callback
                 case 7: libraryTools.ips(file); break;
                 case 8: libraryTools.cheatFiles(file); break;
                 case 9: linkMenu.show(file, connection -> play(file, null, 0, connection)); break;
+                case 10: resetCoreProfile(file); break;
                 case 5:
                     new AlertDialog.Builder(this).setTitle("Remove " + catalog.game(file).title(library.chineseNames()) + "?")
                             .setMessage("The original file and saved games won't be deleted.")
@@ -318,6 +320,17 @@ public final class MainActivity extends Activity implements GameSession.Callback
             return true;
         });
         menu.show();
+    }
+
+    private String coreProfile(String rom) { return settings.getString(CoreProfile.key(rom), ""); }
+
+    private void resetCoreProfile(File file) {
+        new AlertDialog.Builder(this).setTitle("Reset this game's FBNeo settings?")
+                .setMessage("Restores default core settings without deleting saves or changing controls. States saved with custom settings still need those same choices.")
+                .setNegativeButton("Cancel", null).setPositiveButton("Reset", (d, w) -> {
+                    settings.edit().remove(CoreProfile.key(file.getName())).apply();
+                    showLibrary("FBNeo settings reset for " + catalog.game(file).title(library.chineseNames()) + ".");
+                }).show();
     }
 
     private void gameInfo(File file) {
@@ -466,6 +479,15 @@ public final class MainActivity extends Activity implements GameSession.Callback
             } else confirmRestore(chosenUri);
             return;
         }
+        if (request == PICK_HISCORE_DATA) {
+            if (chosenUri == null || !"content".equals(chosenUri.getScheme())) { showLibrary("Choose a file in the Android picker."); return; }
+            libraryJob("Checking high score data…", () -> {
+                GameSession.awaitIdle();
+                try (InputStream in = getContentResolver().openInputStream(chosenUri)) { HighScoreData.install(systemDir, in); }
+                return null;
+            }, unused -> showLibrary("Verified high score data installed. Enable it in Pause → FBNeo settings for games that support it."));
+            return;
+        }
         if (request == PICK_FOLDER) { romFolders.picked(chosenUri); return; }
         if (request == PICK_SKIN) {
             libraryJob("Copying controller skin…", () -> skins.install(getContentResolver(), chosenUri), added -> {
@@ -612,15 +634,20 @@ public final class MainActivity extends Activity implements GameSession.Callback
             showLibrary("Couldn't create private storage for the emulator.");
             return;
         }
+        String profile = patch == null && link == null ? coreProfile(file.getName()) : "";
+        if (!CoreProfile.valid(profile)) {
+            showLibrary("Invalid saved FBNeo settings. Reset them from the game's library menu.");
+            return;
+        }
         currentFile = file;
         refreshSkin();
         String set = GameCatalog.setName(file.getName());
         String title = catalog.game(file).title(library.chineseNames());
         if (patch != null) title += " · IPS: " + patch.title;
         if (link != null) title += " · Link P" + (link.player() + 1);
-        GameScreen screen = new GameScreen(this, title, skin, touchVisible, link, this::gameAction);
+        GameScreen screen = new GameScreen(this, title, skin, touchVisible, link, patch == null, this::gameAction);
         immersiveInsets(screen);
-        GameSession session = new GameSession(this, screen.surface(), file, systemDir, saveDir, catalog, catalog.cover(set), patch, slot, link, continuing, this);
+        GameSession session = new GameSession(this, screen.surface(), file, systemDir, saveDir, catalog, catalog.cover(set), patch, slot, link, continuing, profile, this);
         game = session;
         player = screen;
         screen.attach(session);
@@ -674,6 +701,7 @@ public final class MainActivity extends Activity implements GameSession.Callback
                 break;
             case CHEATS: showCoreOptions(session, true); break;
             case DIPS: showCoreOptions(session, false); break;
+            case CORE_SETTINGS: showBootSettings(session); break;
             case CONTROLLER: showControls(); break;
             case DISPLAY: showDisplay(); break;
             case KEYS: showKeyBindings(); break;
@@ -696,7 +724,7 @@ public final class MainActivity extends Activity implements GameSession.Callback
 
     private void showCoreOptions(GameSession session, boolean cheats) {
         if (!session.post(() -> {
-            String[][] options = Core.options();
+            String[][] options = Core.options(false);
             runOnUiThread(() -> {
                 if (isFinishing() || isDestroyed() || game != session || exiting || !session.paused) return;
                 GamePanels.options(this, cheats ? "Game cheats" : "DIP switches", options, cheats, changes -> {
@@ -705,6 +733,25 @@ public final class MainActivity extends Activity implements GameSession.Callback
                             if (!Core.setOption(entry.getKey(), entry.getValue())) throw new IOException("A choice is no longer available for this driver.");
                         }
                     }, () -> toast(cheats ? "Cheat choices set. Resume to apply." : "Cabinet choices set. Resume to apply."));
+                });
+            });
+        })) toast("Emulator busy. Try again.");
+    }
+
+    private void showBootSettings(GameSession session) {
+        if (!session.hasCoreSettings()) return;
+        if (!session.post(() -> {
+            String[][] options = Core.options(true);
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed() || game != session || exiting || !session.paused) return;
+                CoreSettingsPanel.show(this, options, coreProfile(session.romName()), HighScoreData.installed(systemDir), profile -> {
+                    if (isFinishing() || isDestroyed() || game != session || exiting) return;
+                    SharedPreferences.Editor edit = settings.edit();
+                    String key = CoreProfile.key(session.romName());
+                    if (profile.isEmpty()) edit.remove(key); else edit.putString(key, profile);
+                    edit.apply();
+                    toast(profile.equals(session.bootProfile) ? "Settings match the current session."
+                            : "Saved. Exit and start normally to apply.");
                 });
             });
         })) toast("Emulator busy. Try again.");
@@ -741,6 +788,13 @@ public final class MainActivity extends Activity implements GameSession.Callback
 
     private void exitGame(GameSession session) {
         if (session.link != null || !loaded || !quickResumeEnabled()) { closeGame(); return; }
+        if (session.hasCoreSettings() && !session.bootProfile.equals(coreProfile(session.romName()))) {
+            new AlertDialog.Builder(this).setTitle("Exit to apply FBNeo settings?")
+                    .setMessage("Start the game normally to use the new settings. Quick Resume won't be replaced by a state from the old settings.")
+                    .setPositiveButton("Exit", (d, w) -> { if (game == session) closeGame("Start normally to apply the saved FBNeo settings."); })
+                    .setNegativeButton("Stay paused", null).show();
+            return;
+        }
         exiting = true;
         setPaused(true);
         player.setSavingQuickResume(true);
@@ -889,7 +943,7 @@ public final class MainActivity extends Activity implements GameSession.Callback
         if (editor != null || importing || game != null) return;
         library.hideKeyboard();
         String[] items = {"Virtual controls", "Display & audio", "Physical keys", "Quick Resume · " + status(quickResumeEnabled()),
-                "Backup & restore", "Browse ROM folder", "How to play", "Core license", "Reset game settings"};
+                "Backup & restore", "Browse ROM folder", "How to play", "Core license", "Reset game settings", "High score data"};
         new AlertDialog.Builder(this).setTitle("Settings").setItems(items, (d, which) -> {
             switch (which) {
                 case 0: showControls(); break;
@@ -901,9 +955,32 @@ public final class MainActivity extends Activity implements GameSession.Callback
                 case 6: showGuide(); break;
                 case 7: showLicense(); break;
                 case 8: resetSettings(); break;
+                case 9: showHighScoreData(); break;
                 default: break;
             }
         }).setNegativeButton("Close", null).show();
+    }
+
+    private void showHighScoreData() {
+        boolean installed = HighScoreData.installed(systemDir);
+        AlertDialog.Builder dialog = new AlertDialog.Builder(this).setTitle("High score data · " + (installed ? "Installed" : "Not installed"))
+                .setMessage("Choose the unmodified hiscore.dat linked in the README's High score setup. The app verifies the exact FBNeo revision and does not download anything.\n\n"
+                        + "Then use Pause → FBNeo settings → Save high scores in a supported game. This does not apply to IPS variants or Link.")
+                .setNegativeButton("Close", null).setPositiveButton(installed ? "Re-import" : "Import file", (d, w) -> {
+                    Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("*/*").addCategory(Intent.CATEGORY_OPENABLE)
+                            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    try { startActivityForResult(pick, PICK_HISCORE_DATA); }
+                    catch (android.content.ActivityNotFoundException unavailable) { toast("No document picker is available."); }
+                });
+        if (installed) dialog.setNeutralButton("Remove data", (d, w) -> new AlertDialog.Builder(this).setTitle("Remove high score data?")
+                .setMessage("Saved scores stay on the device. Games with this option on will need the file again or a reset of their FBNeo settings.")
+                .setNegativeButton("Cancel", null).setPositiveButton("Remove", (confirm, which) ->
+                        libraryJob("Removing high score data…", () -> {
+                            GameSession.awaitIdle();
+                            HighScoreData.remove(systemDir);
+                            return null;
+                        }, unused -> showLibrary("High score data removed. Score files were kept."))).show());
+        dialog.show();
     }
 
     private boolean quickResumeEnabled() { return settings.getBoolean(QUICK_RESUME, false); }
@@ -1243,7 +1320,7 @@ public final class MainActivity extends Activity implements GameSession.Callback
 
     private void resetSettings() {
         new AlertDialog.Builder(this).setTitle("Reset game settings?")
-                .setMessage("Restore all game and global controls, display and audio defaults. Keeps ROMs, saves, patches, cheats, thumbnails, favorites and history.")
+                .setMessage("Restore global and per-game controls, display, audio and FBNeo defaults. Keeps ROMs, saves, patches, cheats, thumbnails, favorites and history.")
                 .setNegativeButton("Cancel", null).setPositiveButton("Reset", (d, w) -> {
                     SharedPreferences.Editor reset = settings.edit();
                     for (String key : settings.getAll().keySet()) {
